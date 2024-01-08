@@ -10,9 +10,7 @@
 #include <windows.h>
 #include <memoryapi.h>
 
-#define PAGELIMIT 1'000'000 // practical
-//constexpr size_t PAGELIMIT = 4'503'599'627'370'496; // theory
-//                18'446'744'073'709'551'616 (2^64) / 4096
+#include <sysinfoapi.h>                 // for GetPhysicallyInstalledSystemMemory
 
 
 #define KB(x) (x) * (size_t)1024
@@ -35,8 +33,7 @@ static_assert(GB(4) == 4'294'967'296);
 
 // TODO test on smth bigger than int (probably with alignas())
 // check when to use reserve without commit?
-
-template<class T, size_t AllocationBytesStep = GB(4), bool ReserveOnConstruct = false>
+template<class T, /*size_t PageSize,*/ size_t PageAllocationStep = 1, bool CommitPagesWithReserve = false>
 class GrowingVectorVM
 {
 public:
@@ -46,9 +43,7 @@ public:
     GrowingVectorVM()
         : m_dataBlocks{}
         , m_size(0)
-#if !MEMORY_COMMIT_WITH_RESERVE
         , m_committedPages(0)
-#endif
         , m_reservedPages(0)
     {
 #if !LARGE_PAGE_ENABLE
@@ -59,12 +54,9 @@ public:
 #else
         m_pageSize = GetLargePageMinimum();
 #endif
+        assert(m_pageSize % ElementSize == 0); // TODO is it valid check?
 
         m_dataBlocks.reserve(10);
-        if (ReserveOnConstruct)
-        {
-            ReserveBytes(AllocationBytesStep);
-        }
     }
     ~GrowingVectorVM()
     {
@@ -78,20 +70,23 @@ public:
         }
     }
 
-    size_t GetSize() const { return m_size; }
-    size_t GetCapacity() const { return CalculateObjectAmountForNBytes(GetAllocatedBytes()); };
-    size_t GetAllocatedBytes() const { return m_reservedPages * m_pageSize; }
+    [[nodiscard]] size_t GetSize() const { return m_size; }
+    [[nodiscard]] size_t GetCapacity() const { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
 
     bool ReserveBytes(size_t requestedBytes)
     {
-        // TODO Simplify this later
-        assert(requestedBytes % m_pageSize == 0);
+        // TODO check if current capacity alrady covers requestedBytes
 
-        const size_t requiredPages = CalculatePageCount(requestedBytes, AllocationBytesStep, m_pageSize);
+        const size_t requiredPages = CalculatePageCount(requestedBytes, PageAllocationStep * m_pageSize, m_pageSize);
         const size_t totalSize = requiredPages * m_pageSize;
-        assert(requestedBytes == totalSize);
 
-        DWORD allocationFlags = MEM_RESERVE | MEM_COMMIT;
+        DWORD allocationFlags = MEM_RESERVE;
+        DWORD protectionFlags = PAGE_NOACCESS;
+        if (CommitPagesWithReserve)
+        {
+            allocationFlags |= MEM_COMMIT;
+            protectionFlags = PAGE_READWRITE;
+        }
 #if LARGE_PAGE_ENABLE
         allocationFlags |= MEM_LARGE_PAGES;
 #endif // LARGE_PAGE_ENABLE
@@ -100,20 +95,23 @@ public:
             NULL,                   // System selects address
             totalSize,              // Size of allocation
             allocationFlags,        // Allocate reserved pages
-            /*PAGE_NOACCESS */PAGE_READWRITE);
+            protectionFlags);
 
         if (lpvBase == NULL)
+        {
             return false;
+        }
+        // TODO keep lpvBase in proper way
 
         // Guiding by Exception Safety Guarantee, let's modify state of the object only if everything goes successfully
         // LPVOID lpNxtPage = lpvBase;
-        const AllocatedVirtualMemoryBlock newBlock{ .blockStart = reinterpret_cast<ElementType*>(lpvBase), .blockBytes = totalSize };
-        m_dataBlocks.push_back(std::move(newBlock));
+        // DO I still need block system if I reserve huge chunk of data?
+        //const AllocatedVirtualMemoryBlock newBlock{ .blockStart = reinterpret_cast<ElementType*>(lpvBase), .blockBytes = totalSize };
+        //m_dataBlocks.push_back(std::move(newBlock));
 
         m_reservedPages = requiredPages;
-#if !MEMORY_COMMIT_WITH_RESERVE
-        m_committedPages = m_reservedPages;
-#endif // !MEMORY_COMMIT_WITH_RESERVE
+        m_committedPages = CommitPagesWithReserve ? m_reservedPages : 0;
+
         std::cout << "GrowingVectorVM preallocated " << totalSize << " bytes of vm for " << GetCapacity() << " objects\n";
 
         return true;
@@ -125,40 +123,8 @@ public:
         return ReserveBytes(elementAmount * ElementSize);
     }
 
-    bool ForceReallocateUnitialized(size_t newAmount)
-    {
-        assert(newAmount > m_size);
-        const size_t minimalRequiredBytes = ElementSize * (newAmount) - GetAllocatedBytes();
-        const size_t pageCount = CalculatePageCount(minimalRequiredBytes, AllocationBytesStep, m_pageSize);
-
-        DWORD allocationFlags = MEM_RESERVE | MEM_COMMIT;
-#if LARGE_PAGE_ENABLE
-        allocationFlags |= MEM_LARGE_PAGES;
-#endif // LARGE_PAGE_ENABLE
-        
-        assert(!m_dataBlocks.empty());
-        const AllocatedVirtualMemoryBlock& lastBlock = m_dataBlocks.back();
-        LPVOID lpvBase = VirtualAlloc(
-            lastBlock.blockStart + lastBlock.blockBytes,    // System selects address
-            pageCount * m_pageSize,                         // Size of allocation
-            allocationFlags,                                // Allocate reserved pages
-            /*PAGE_NOACCESS */PAGE_READWRITE);
-
-        if (lpvBase == NULL)
-        {
-            return false;
-        }
-
-        const AllocatedVirtualMemoryBlock newBlock{ .blockStart = reinterpret_cast<ElementType*>(lpvBase), .blockBytes = pageCount * m_pageSize };
-        m_dataBlocks.push_back(std::move(newBlock));
-        // TODO lpvBase should be released separately
-        // TODO introduce memory block and immitate continuous one
-        m_reservedPages += pageCount;
-
-        return true;
-    }
-
-    ElementType& operator[](size_t index)
+    // TODO adjust to new requirements
+    const ElementType& operator[](size_t index) const
     {
         //if (index >= GetSize())
         //{
@@ -179,58 +145,70 @@ public:
         return m_dataBlocks[internalIndexOpt->blockIndex][internalIndexOpt->dataIndex];
     }
 
-    ElementType& GetOrAdd(size_t index, const ElementType& defValue)
+    const ElementType& At(size_t index, const ElementType& defValue) const
     {
         if (index >= GetSize())
         {
-            if (index < GetCapacity())
-            {
-                // TODO wrap by method
-                for (size_t i = m_size; i <= index; i++)
-                {
-                    // TODO consider switching between allocated blocks
-                    // HACK for now
-                    new (&m_dataBlocks[0][i]) ElementType(defValue);
-                    // TODO check std::uninitialized_value_construct_n
-                }
-                m_size = index + 1;
-            }
-            else
-            {
-                // the memory limit exceed
-                //ForceReallocateUnitialized(index + 1);
-
-                // TODO wrap by method
-                //auto oldSize = m_size;
-                //for (size_t i = 0; i <= index - oldSize; i++)
-                //{
-                //    new ((ElementType*)&m_dataBlocks[1][i]) ElementType(defValue);
-                //    // TODO check std::uninitialized_value_construct_n
-                //}
-                //m_size = index + 1;
-                //return ((ElementType*)hackyPtr)[index - oldSize];
-
-                throw std::out_of_range{ "operator[] failed" }; // temporary
-            }
+            return defValue;
         }
 
         return this->operator[](index);
     }
+    // TODO provide non-const versions of [] and At
+    // TODOs:
+    // PushBack
+    // Emplace
+    // empty
+    // Erase (by value, index, iterator)
 
-private:
+protected:
+
+    [[nodiscard]] size_t GetCommittedBytes() const { return m_committedPages * m_pageSize; }
+    [[nodiscard]] size_t GetReservedBytes() const { return m_reservedPages * m_pageSize; }
+
+    // TODO rename and refactor
+    bool ForceReallocateUnitialized(size_t newAmount)
+    {
+        assert(newAmount > m_size);
+        const size_t minimalRequiredBytes = ElementSize * (newAmount) - GetCommittedBytes();
+        const size_t pageCount = CalculatePageCount(minimalRequiredBytes, PageAllocationStep * m_pageSize, m_pageSize);
+        
+        // TODO apply CommitPagesWithReserve
+        DWORD allocationFlags = MEM_COMMIT;
+#if LARGE_PAGE_ENABLE
+        allocationFlags |= MEM_LARGE_PAGES;
+#endif // LARGE_PAGE_ENABLE
+
+        assert(!m_dataBlocks.empty());
+       
+        const AllocatedVirtualMemoryBlock& lastBlock = m_dataBlocks.back(); // potentially fails now
+        LPVOID lpvBase = VirtualAlloc(
+            lastBlock.blockStart + lastBlock.blockBytes,    // System selects address
+            pageCount * m_pageSize,                         // Size of allocation
+            allocationFlags,                                // Allocate reserved pages
+            PAGE_READWRITE);
+
+        if (lpvBase == NULL)
+        {
+            return false;
+        }
+
+        const AllocatedVirtualMemoryBlock newBlock{ .blockStart = reinterpret_cast<ElementType*>(lpvBase), .blockBytes = pageCount * m_pageSize };
+        m_dataBlocks.push_back(std::move(newBlock));
+
+        m_committedPages += pageCount;
+
+        return true;
+    }
+
     constexpr static size_t CalculateAlignedMemorySize(size_t bytesToAllocate, size_t alignment)
     {
         // Calculate the remainder when bytes_to_allocate is divided by alignment
         const size_t remainder = bytesToAllocate % alignment;
 
         // If remainder is zero, then bytesToAllocate is already aligned
-        if (remainder == 0)
-        {
-            return bytesToAllocate;
-        }
-
         // Otherwise, compute the amount of bytes needed to reach the next aligned value
-        return bytesToAllocate + (alignment - remainder);
+        return (remainder == 0) ? bytesToAllocate : bytesToAllocate + (alignment - remainder);
     }
     static_assert(CalculateAlignedMemorySize(10, 4) == 12);
     static_assert(CalculateAlignedMemorySize(4000, 4096) == 4096);
@@ -259,6 +237,7 @@ private:
         size_t dataIndex = 0;
     };
 
+    // TODO validate
     std::optional<InternalDataIndex> CalculateInternalIndex(size_t externalIndex, bool IsBasedOnSizeNotCapacity = false) const
     {
         if (IsBasedOnSizeNotCapacity && externalIndex >= GetSize())
@@ -302,56 +281,48 @@ private:
     };
 
 
-
-    std::vector<AllocatedVirtualMemoryBlock> m_dataBlocks;
+    std::vector<AllocatedVirtualMemoryBlock> m_dataBlocks; // concern: default allocation system
     //size_t m_capacity; // capacity is calculated based on used pages and ElementSize value dynamically
     size_t m_size;
 
-#if !MEMORY_COMMIT_WITH_RESERVE
-    size_t m_committedPages; // TODO if reserve and commit are separate
-#endif
+    size_t m_committedPages;
     size_t m_reservedPages;
     size_t m_pageSize;
 };
 
 
+// why I need that structure, use cases
+// consider actual vector (push back) behavior (no reallocation, no invalidation on push_back())
+// TODO iterations and algorithm
+
+
 int main()
 {
+
+    // Recognize RAM and reserve 2x
+    unsigned long long TotalMemoryInKilobytes;
+    GetPhysicallyInstalledSystemMemory(&TotalMemoryInKilobytes);
+
+    unsigned long long TotalMemoryInBytes = TotalMemoryInKilobytes * 1024;
+    unsigned long long RecommendedReserveInBytes = TotalMemoryInBytes * 2;
+
     {
-        GrowingVectorVM<double> vectorInf;
-        vectorInf.ReserveBytes(GB(4));
+        GrowingVectorVM<double, 1, true> vectorInf;
+        if (!vectorInf.ReserveBytes(RecommendedReserveInBytes))
+        {
+            std::cerr << "Can't reserve " << RecommendedReserveInBytes << " bytes. Consider smaller allocation\n";
+        }
     }
 
     GrowingVectorVM<int> vectorInf;
-    vectorInf.ReserveBytes(GB(4));
-
-    try
+    if (!vectorInf.ReserveBytes(GB(4)))
     {
-        vectorInf[0] = 3;
-    }
-    catch (const std::out_of_range& e)
-    {
-        std::cout << "Processed: " << e.what() << std::endl;
+        std::cerr << "Can't reserve " << GB(4) << " bytes for vectorInf. Consider smaller allocation. Quitting...\n";
+        return 1;
     }
 
-    assert(vectorInf.GetOrAdd(0, 3) == 3);
-    vectorInf.GetOrAdd(10, 2);
-    assert(vectorInf[10] == 2);
-    assert(vectorInf[8] == 2); // also inited by 2
-    vectorInf.GetOrAdd(10000, 5);
-    assert(vectorInf[9999] == 5);
-
-    size_t maxAmount = vectorInf.GetCapacity();
-    vectorInf.GetOrAdd(maxAmount - 1, 100); // 4ms on my machine
-    assert(vectorInf[maxAmount - 1] == 100);
-
-    int value = vectorInf.GetOrAdd((maxAmount - 1) * 2, 99); // why it works without assignment during direct access to memory (no custom operator[]) (optimization)??
-
-    // TODO
-    //int value = vectorInf.GetOrAdd(5'000'000'000, 99); // why it works without assignment (optimization)??
-
-    //assert(vectorInf[5'000'000'000] == 99); // Crash already, first explicit access to the memory
-    //assert(vectorInf[4'999'999'999] == 99);
+    const size_t maxAmount = vectorInf.GetCapacity();
+    // TODO impl use cases
 
     return 0;
 }
