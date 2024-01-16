@@ -67,6 +67,7 @@ public:
 
     [[nodiscard]] size_t GetSize() const { return m_size; }
     [[nodiscard]] size_t GetCapacity() const { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
+    [[nodiscard]] size_t GetReserve() const { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
 
     // TODO make it private
     bool ReserveBytes(size_t requestedBytes)
@@ -112,7 +113,6 @@ public:
 
         return true;
     }
-    // TODO implement private CommitMemory() method
 
     bool Reserve(size_t elementAmount)
     {
@@ -123,6 +123,11 @@ public:
     [[nodiscard]] inline bool Empty() const { return GetSize() == 0; }
 
     const ElementType& operator[](size_t index) const
+    {
+        return const_cast<const GrowingVectorVM*>(this)->operator[](index);
+    }
+
+    ElementType& operator[](size_t index)
     {
         if (index >= GetSize())
         {
@@ -141,13 +146,68 @@ public:
 
         return this->operator[](index);
     }
+
+    void PushBack(const ElementType& value)
+    {
+        if (GetSize() >= GetCapacity())
+        {
+            if (!CommitAdditionalPage())
+            {
+                // The container couldn't allocate one more virtual page
+                throw std::bad_array_new_length();
+            }
+            assert(GetSize() < GetCapacity());
+        }
+
+        //if constexpr (std::is_trivially_copyable_v<ElementType>) // << no boost noticed
+        //{
+        //    memcpy(&m_data[GetSize()], &value, ElementSize);
+        //}
+        //else
+        {
+            new (&m_data[GetSize()]) ElementType(value);
+        }
+        ++m_size;
+    }
+
+    // void PushBack(const ElementType&& value)
+
+
     // TODO provide non-const versions of [] and At
     // TODOs:
-    // PushBack
     // Emplace
     // Erase (by value, index, iterator)
 
     // compatibility with stl, generate, transform algorithms for ex.
+
+private:
+    bool CommitAdditionalPage()
+    {
+        if (GetCommittedBytes() + m_pageSize > GetReservedBytes())
+        {
+            // TODO think about attempt to extend it
+            //m_reservedPages = requiredPages;
+            return false;
+        }
+
+        LPVOID lpvBase = VirtualAlloc(
+            reinterpret_cast<char*>(m_data) + GetCommittedBytes(),
+            m_pageSize,
+            MEM_COMMIT,
+            PAGE_READWRITE);
+
+        if (lpvBase == nullptr)
+        {
+            // OUT of MEMORY
+            return false;
+        }
+
+        ++m_committedPages;
+
+        // TODO debug output
+
+        return true;
+    }
 
 protected:
 
@@ -195,11 +255,6 @@ private:
 };
 
 
-// why I need that structure, use cases
-// consider actual vector (push back) behavior (no reallocation, no invalidation on push_back())
-// TODO iterations and algorithm
-
-
 int main()
 {
     // Recognize RAM and reserve 2x
@@ -207,25 +262,31 @@ int main()
     GetPhysicallyInstalledSystemMemory(&TotalMemoryInKilobytes);
 
     unsigned long long TotalMemoryInBytes = TotalMemoryInKilobytes * 1024;
-    unsigned long long RecommendedReserveInBytes = TotalMemoryInBytes * 2;
+    unsigned long long RecommendedReserveInBytes = TotalMemoryInBytes /** 2*/;
 
-    //{
-    //    GrowingVectorVM<double, 1, true> vectorInf;
-    //    if (!vectorInf.ReserveBytes(RecommendedReserveInBytes))
-    //    {
-    //        std::cerr << "Can't reserve " << RecommendedReserveInBytes << " bytes. Consider smaller allocation\n";
-    //    }
-    //}
+    GrowingVectorVM<double> vectorInf;
+    if (!vectorInf.ReserveBytes(RecommendedReserveInBytes))
+    {
+        std::cerr << "Can't reserve " << RecommendedReserveInBytes << " bytes. Consider smaller allocation\n";
+    }
 
-    //GrowingVectorVM<int> vectorInf;
-    //if (!vectorInf.ReserveBytes(GB(4)))
-    //{
-    //    std::cerr << "Can't reserve " << GB(4) << " bytes for vectorInf. Consider smaller allocation. Quitting...\n";
-    //    return 1;
-    //}
+    const size_t maxAmount = vectorInf.GetCapacity();
+    std::cout << "Capacity: " << maxAmount << "\n";
+    std::cout << "Reserve: " << vectorInf.GetReserve() << "\n";
 
-    //const size_t maxAmount = vectorInf.GetCapacity();
     // TODO impl use cases
+    for (size_t i = 0; i < vectorInf.GetReserve(); i++)
+    {
+        vectorInf.PushBack(i * 1.23f);
+    }
 
+    try
+    {
+        vectorInf.PushBack(1.23f);
+    }
+    catch (const std::bad_array_new_length&)
+    {
+        std::cout << "Expected exception on reserve overflow\n";
+    }
     return 0;
 }
