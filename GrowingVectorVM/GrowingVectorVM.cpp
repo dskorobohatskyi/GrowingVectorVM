@@ -23,14 +23,31 @@ static_assert(MB(2) == 1'048'576 * 2);
 static_assert(GB(4) == 4'294'967'296);
 
 
+struct RAMSizePolicyTag {};
+struct RAMDoubleSizePolicyTag {};
+
+template <size_t N>
+struct CustomSizePolicyTag
+{
+    constexpr static size_t size = N;
+};
+
+
+// Helper trait to check if a type has a 'size' member
+template <typename T>
+struct is_custom_sizing_policy : std::false_type {};
+
+template <size_t N>
+struct is_custom_sizing_policy<CustomSizePolicyTag<N>> : std::true_type {};
+
+
 // TODO read TLB, TLB miss, physical memory access optimization, 512 times less of page faults and TLB misses
 // TODO natvis for GrowingVector
 
 // TODO test on smth bigger than int (probably with alignas())
 // TODO carry out class logic to separate file
-// TODO internal reserve should be bigger than user requests (user's is about commited memory)
 // TODO to support large pages CommitPagesWithReserve option should work
-template<class T, bool LargePagesEnabled = false, bool CommitPagesWithReserve = false || LargePagesEnabled>
+template<typename T, typename ReservePolicy = RAMSizePolicyTag, bool LargePagesEnabled = false, bool CommitPagesWithReserve = false || LargePagesEnabled>
 class GrowingVectorVM
 {
 public:
@@ -55,8 +72,36 @@ public:
             m_pageSize = GetLargePageMinimum(); // 2MB on my machine 
         }
         assert(m_pageSize % ElementSize == 0); // TODO get rid of this assert (keep it as reminder now)
+
+        unsigned long long TotalMemoryInBytes = 0;
+        if constexpr (std::is_same_v<ReservePolicy, RAMSizePolicyTag>)
+        {
+            GetPhysicallyInstalledSystemMemory(&TotalMemoryInBytes);
+            TotalMemoryInBytes *= 1024;
+        }
+        else if constexpr (std::is_same_v<ReservePolicy, RAMDoubleSizePolicyTag>)
+        {
+            GetPhysicallyInstalledSystemMemory(&TotalMemoryInBytes);
+            TotalMemoryInBytes *= (1024 * 2);
+        }
+        else if constexpr (is_custom_sizing_policy<ReservePolicy>::value)
+        {
+            TotalMemoryInBytes = ReservePolicy::size;
+        }
+        else
+        {
+            // TODO find a way to make it static_assert
+            //assert(false && "Unallowed Reserve Policy type is used! Use RAMSizePolicyTag, RAMDoubleSizePolicyTag or CustomSizePolicyTag");
+            throw std::logic_error("Unallowed Reserve Policy type is used! Use RAMSizePolicyTag, RAMDoubleSizePolicyTag or CustomSizePolicyTag");
+        }
+
+        assert(TotalMemoryInBytes % m_pageSize == 0);
+        if (ReserveBytes(TotalMemoryInBytes) == false)
+        {
+            throw std::bad_alloc{};
+        }
     }
-    ~GrowingVectorVM()
+    ~GrowingVectorVM() noexcept
     {
         const bool bSuccess = VirtualFree(
             m_data,                     // Base address of block
@@ -69,55 +114,10 @@ public:
     [[nodiscard]] size_t GetCapacity() const { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
     [[nodiscard]] size_t GetReserve() const { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
 
-    // TODO make it private
-    bool ReserveBytes(size_t requestedBytes)
-    {
-        // TODO check if current capacity already covers requestedBytes
-
-        const size_t requiredPages = CalculatePageCount(requestedBytes, m_pageSize, m_pageSize);
-        const size_t totalSize = requiredPages * m_pageSize;
-
-        DWORD allocationFlags = MEM_RESERVE;
-        DWORD protectionFlags = PAGE_NOACCESS;
-        if constexpr (CommitPagesWithReserve)
-        {
-            allocationFlags |= MEM_COMMIT;
-            protectionFlags = PAGE_READWRITE;
-        }
-
-        // Large-page memory must be reserved and committed as a single operation.
-        // In other words, large pages cannot be used to commit a previously reserved range of memory.
-        if constexpr (LargePagesEnabled)
-        {
-            allocationFlags |= MEM_LARGE_PAGES;
-        }
-        // lpvBase - Base address of the allocated memory
-        LPVOID lpvBase = VirtualAlloc(
-            nullptr,                    // System selects address
-            totalSize,                  // Size of allocation
-            allocationFlags,            // Allocate reserved pages
-            protectionFlags);
-
-        if (lpvBase == nullptr)
-        {
-            return false;
-        }
-
-        // Guiding by Exception Safety Guarantee, let's modify state of the object only if everything goes successfully
-        m_data = reinterpret_cast<ElementType*>(lpvBase);
-
-        m_reservedPages = requiredPages;
-        m_committedPages = CommitPagesWithReserve ? m_reservedPages : 0;
-
-        std::cout << "GrowingVectorVM preallocated " << totalSize << " bytes of vm for " << GetCapacity() << " objects\n";
-
-        return true;
-    }
-
     bool Reserve(size_t elementAmount)
     {
         // TODO validate that ElementSize is aligned
-        return ReserveBytes(elementAmount * ElementSize); // TODO CommitMemory should be used here
+        return CommitOverallMemory(elementAmount * ElementSize);
     }
 
     [[nodiscard]] inline bool Empty() const { return GetSize() == 0; }
@@ -181,32 +181,95 @@ public:
     // compatibility with stl, generate, transform algorithms for ex.
 
 private:
-    bool CommitAdditionalPage()
+    bool ReserveBytes(size_t requestedBytes)
     {
-        if (GetCommittedBytes() + m_pageSize > GetReservedBytes())
+        const size_t requiredPages = CalculatePageCount(requestedBytes, m_pageSize, m_pageSize);
+        const size_t totalSize = requiredPages * m_pageSize;
+
+        DWORD allocationFlags = MEM_RESERVE;
+        DWORD protectionFlags = PAGE_NOACCESS;
+        if constexpr (CommitPagesWithReserve)
         {
-            // TODO think about attempt to extend it
-            //m_reservedPages = requiredPages;
-            return false;
+            allocationFlags |= MEM_COMMIT;
+            protectionFlags = PAGE_READWRITE;
         }
 
+        // Large-page memory must be reserved and committed as a single operation.
+        // In other words, large pages cannot be used to commit a previously reserved range of memory.
+        if constexpr (LargePagesEnabled)
+        {
+            allocationFlags |= MEM_LARGE_PAGES;
+        }
+        // lpvBase - Base address of the allocated memory
         LPVOID lpvBase = VirtualAlloc(
-            reinterpret_cast<char*>(m_data) + GetCommittedBytes(),
-            m_pageSize,
-            MEM_COMMIT,
-            PAGE_READWRITE);
+            nullptr,                    // System selects address
+            totalSize,                  // Size of allocation
+            allocationFlags,            // Allocate reserved pages
+            protectionFlags);
 
         if (lpvBase == nullptr)
         {
-            // OUT of MEMORY
             return false;
         }
 
-        ++m_committedPages;
+        // Guiding by Exception Safety Guarantee, let's modify state of the object only if everything goes successfully
+        m_data = reinterpret_cast<ElementType*>(lpvBase);
 
-        // TODO debug output
+        m_reservedPages = requiredPages;
+        m_committedPages = CommitPagesWithReserve ? m_reservedPages : 0;
+
+        std::cout << "GrowingVectorVM preallocated " << totalSize << " bytes of vm for " << GetCapacity() << " objects\n";
 
         return true;
+    }
+
+    // TODO test it
+    bool CommitOverallMemory(size_t bytes)
+    {
+        if constexpr (CommitPagesWithReserve)
+        {
+            // TODO handle this properly
+        }
+        else
+        {
+            if (bytes <= GetCommittedBytes())
+            {
+                return true;
+            }
+
+            if (GetCommittedBytes() + m_pageSize > GetReservedBytes())
+            {
+                // TODO think about attempt to extend it
+                return false;
+            }
+
+            const size_t wantage = bytes - GetCommittedBytes(); 
+            const size_t requiredPages = CalculatePageCount(wantage, m_pageSize, m_pageSize);
+            const size_t totalMemoryToCommit = requiredPages * m_pageSize;
+
+            LPVOID lpvBase = VirtualAlloc(
+                reinterpret_cast<char*>(m_data) + GetCommittedBytes(),
+                totalMemoryToCommit,
+                MEM_COMMIT,
+                PAGE_READWRITE);
+
+            if (lpvBase == nullptr)
+            {
+                // OUT of MEMORY
+                return false;
+            }
+
+            m_committedPages += requiredPages;
+
+            // TODO debug output
+
+            return true;
+        }
+    }
+
+    bool CommitAdditionalPage()
+    {
+        return CommitOverallMemory(GetCommittedBytes() + m_pageSize);
     }
 
 protected:
@@ -255,19 +318,27 @@ private:
 };
 
 
+#include <vector>
+
+struct alignas(256) MyHugeStruct
+{
+
+};
+static_assert(alignof(MyHugeStruct) == 256);
+static_assert(sizeof(MyHugeStruct) == 256);
+
 int main()
 {
-    // Recognize RAM and reserve 2x
-    unsigned long long TotalMemoryInKilobytes;
-    GetPhysicallyInstalledSystemMemory(&TotalMemoryInKilobytes);
+    constexpr size_t halfRAMHackyValue = GB(16);
+    GrowingVectorVM<double, CustomSizePolicyTag<halfRAMHackyValue>> vectorInf;
 
-    unsigned long long TotalMemoryInBytes = TotalMemoryInKilobytes * 1024;
-    unsigned long long RecommendedReserveInBytes = TotalMemoryInBytes /** 2*/;
-
-    GrowingVectorVM<double> vectorInf;
-    if (!vectorInf.ReserveBytes(RecommendedReserveInBytes))
+    try
     {
-        std::cerr << "Can't reserve " << RecommendedReserveInBytes << " bytes. Consider smaller allocation\n";
+        GrowingVectorVM<double, MyHugeStruct /*as ReservePolicy*/> incorrectPolicyVector;
+    }
+    catch (const std::logic_error&)
+    {
+        // expected
     }
 
     const size_t maxAmount = vectorInf.GetCapacity();
@@ -275,9 +346,9 @@ int main()
     std::cout << "Reserve: " << vectorInf.GetReserve() << "\n";
 
     // TODO impl use cases
-    for (size_t i = 0; i < vectorInf.GetReserve(); i++)
+    //for (size_t i = 0; i < vectorInf.GetReserve(); i++)
     {
-        vectorInf.PushBack(i * 1.23f);
+        //vectorInf.PushBack(i * 1.23f);
     }
 
     try
@@ -288,5 +359,66 @@ int main()
     {
         std::cout << "Expected exception on reserve overflow\n";
     }
+
+    const int newCapacity = 10;
+    std::vector<int> v;
+    assert(v.capacity() == 0);
+    v.reserve(newCapacity);
+    assert(v.capacity() == newCapacity);
+
+    for (int i = 0; i < newCapacity; i++)
+    {
+        v.push_back(i);
+        assert(v.capacity() == newCapacity);
+    }
+
+    GrowingVectorVM<int> mv;
+    assert(mv.GetCapacity() == 0);
+    mv.Reserve(newCapacity);
+    //assert(mv.GetCapacity() == 4096 * 1 / sizeof(int)); // failed
+
+    //for (int i = 0; i < newCapacity; i++)
+    //{
+    //    mv.PushBack(i);
+    //    assert(mv.GetCapacity() == newCapacity);
+    //}
+
+    std::vector<MyHugeStruct> testVector;
+    std::cout << "Max size of vector - " << testVector.max_size() << std::endl;
+    size_t counter = 0;
+    auto emitOnEveryNthIteration = [&counter](const size_t limit)
+        {
+            counter++;
+            if (counter == limit)
+            {
+                counter = 0;
+                return true;
+            }
+            return false;
+        };
+
+    //while (true)
+    //{
+    //    if (emitOnEveryNthIteration(10000))
+    //    {
+    //        std::cout << "Capacity=" << testVector.capacity() << ", Size=" << testVector.size() << ", Alloc=" << testVector.capacity() * sizeof(MyHugeStruct) << "\n";
+    //    }
+    //    testVector.push_back({});
+    //}
+    // LIMIT size and capacity 136'216'567 = 34,871,441,152 bytes
+
+    GrowingVectorVM<MyHugeStruct> testMyVector;
+    //bool success = testMyVector.Reserve(136'216'567); // OK  - 34,871,443,456 bytes allocated
+    bool success = testMyVector.Reserve(200'000'000); // OK  12'500'000 pages = 51,200,000,000 bytes
+
+    while (true)
+    {
+        if (emitOnEveryNthIteration(10000))
+        {
+            std::cout << "Capacity=" << testMyVector.GetCapacity() << ", Size=" << testMyVector.GetSize() << ", Alloc=" << testMyVector.GetCapacity() * sizeof(MyHugeStruct) << "\n";
+        }
+        testMyVector.PushBack({});
+    }
+
     return 0;
 }
