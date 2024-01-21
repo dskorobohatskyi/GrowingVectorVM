@@ -131,8 +131,8 @@ int main()
     GrowingVectorVM<MyHugeStruct> testMyVector;
     //bool success = testMyVector.Reserve(136'216'567); // OK  - 34,871,443,456 bytes allocated
     bool success = testMyVector.Reserve(200'000'000); // OK  12'500'000 pages = 51,200,000,000 bytes
-
-    while (true)
+    assert(success);
+    for (int i = 0; i < testMyVector.GetCapacity(); i++)
     {
         if (emitOnEveryNthIteration(10000))
         {
