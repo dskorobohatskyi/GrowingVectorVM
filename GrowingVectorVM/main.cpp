@@ -327,8 +327,60 @@ struct alignas(256) MyHugeStruct
 static_assert(alignof(MyHugeStruct) == 256);
 static_assert(sizeof(MyHugeStruct) == 256);
 
+struct alignas(256) MyHugeStructWithoutAlignment
+{
+
+};
+
+struct A
+{
+
+};
+static_assert(sizeof(A) == 1);
+static_assert(alignof(A) == 1);
+
+
+struct B
+{
+    int a;
+    char b;
+};
+
+static_assert(sizeof(B) == 8);
+static_assert(alignof(B) == 4);
+
+#include <memory>
+
+template <typename T>
+class MyAllocatorDecorator : public std::allocator<T> {
+public:
+    using value_type = T;
+
+    // Inherit constructors from std::allocator
+    using std::allocator<T>::allocator;
+
+    // Override allocate method
+    T* allocate(std::size_t n) {
+        // Your custom logic or logging here before delegating to the allocator
+        std::cout << "Allocating memory for " << n << " objects of type " << typeid(T).name() << std::endl;
+
+        return std::allocator<T>::allocate(n);
+    }
+
+    // Override deallocate method
+    void deallocate(T* p, std::size_t n) {
+        // Your custom logic or logging here before delegating to the allocator
+        std::cout << "Deallocating memory for " << n << " objects of type " << typeid(T).name() << std::endl;
+
+        std::allocator<T>::deallocate(p, n);
+    }
+};
+
 int main()
 {
+    std::vector<A, MyAllocatorDecorator<A>> va;
+    va.push_back({});
+
     constexpr size_t halfRAMHackyValue = GB(16);
     GrowingVectorVM<double, CustomSizePolicyTag<halfRAMHackyValue>> vectorInf;
 
@@ -421,4 +473,18 @@ int main()
     }
 
     return 0;
+
+
 }
+
+
+
+#include <process.h>
+
+//typedef void(__stdcall* _tls_callback_type)(void*, unsigned long, void*);
+void onExitCallback(void*, unsigned long, void*)
+{
+    std::cout << "goodbye";
+}
+
+// _register_thread_local_exe_atexit_callback(&onExitCallback);
