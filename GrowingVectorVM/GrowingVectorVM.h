@@ -44,6 +44,15 @@ public:
     [[nodiscard]] size_t GetSize() const { return m_size; }
     [[nodiscard]] size_t GetCapacity() const { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
     [[nodiscard]] size_t GetReserve() const { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
+    
+    [[nodiscard]] ElementType* GetData() { return m_data; }
+    [[nodiscard]] const ElementType* GetData() const { return m_data; }
+
+    [[nodiscard]] const ElementType& Back() const { return this->operator[](GetSize() - 1); }
+    [[nodiscard]] ElementType& Back() { return this->operator[](GetSize() - 1); }
+
+    [[nodiscard]] const ElementType& Front() const { return this->operator[](0); }
+    [[nodiscard]] ElementType& Front() { return this->operator[](0); }
 
     bool Reserve(size_t elementAmount)
     {
@@ -105,14 +114,21 @@ public:
     }
 
     template<typename... Args>
-    void Emplace(Args&&... args)
+    void EmplaceBack(Args&&... args)
     {
         EmplaceAtPlace(&m_data[GetSize()], std::forward<Args...>(args)...);
     }
 
     // TODOs:
+    // Resize(newSize) + Resize(newSize, default)
+    // Clear()
+    // Emplace(whereIter, val)
+    // Insert(whereIter, val), 
+    // 
+    // ??? emplace/insert with index? + IndexOf
     // Erase (by value, index, iterator)
 
+    // iterators Random access, begin/end
     // compatibility with stl, generate, transform algorithms for ex.
 
 private:
