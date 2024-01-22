@@ -95,7 +95,6 @@ public:
             //new (&m_data[GetSize()]) ElementType(value);
             EmplaceAtPlace(&m_data[GetSize()], value);
         }
-        ++m_size;
     }
 
     void PushBack(const ElementType&& value)
@@ -103,11 +102,15 @@ public:
         ReallocateIfNeed();
 
         EmplaceAtPlace(&m_data[GetSize()], std::move(value));
-        ++m_size;
+    }
+
+    template<typename... Args>
+    void Emplace(Args&&... args)
+    {
+        EmplaceAtPlace(&m_data[GetSize()], std::forward<Args...>(args)...);
     }
 
     // TODOs:
-    // Emplace
     // Erase (by value, index, iterator)
 
     // compatibility with stl, generate, transform algorithms for ex.
@@ -141,6 +144,7 @@ private:
     void EmplaceAtPlace(ElementType* destination, Args&&... args)
     {
         new (destination) ElementType(std::forward<Args...>(args)...);
+        ++m_size;
     }
 
 protected:
