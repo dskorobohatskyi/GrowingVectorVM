@@ -119,9 +119,59 @@ public:
         EmplaceAtPlace(&m_data[GetSize()], std::forward<Args...>(args)...);
     }
 
+    void Clear()
+    {
+        if (GetSize() == 0)
+        {
+            return;
+        }
+
+        memset(m_data, 0, GetSize() * ElementSize);
+        m_size = 0;
+    }
+
+    template <typename U>
+    void Resize(const size_t newSize, const U& def)
+    {
+        if (newSize == GetCapacity())
+        {
+            return;
+        }
+        else if (newSize < GetCapacity())
+        {
+            void* const erasingDestination = (m_data + newSize);
+            memset(erasingDestination, 0, (m_size - newSize) * ElementSize);
+            m_size = newSize;
+        }
+        else // newSize > GetCapacity()
+        {
+            Reserve(newSize);
+
+            // TODO Consider std::uninitialized_default_construct_n() or fill_n when iterators are implemented
+            for (size_t index = GetSize(); index < newSize; index++)
+            {
+                if constexpr (std::is_same_v<T, U>)
+                {
+                    //static_assert(std::is_same_v<T, U>);
+                    EmplaceAtPlace(&m_data[index], ElementType{def});
+                }
+                else
+                {
+                    static_assert(std::is_same_v<U, DefaultContructTag>);
+                    static_assert(std::is_default_constructible_v<ElementType> && "Use Resize with Default value for this type if Resize(const size_t newSize) fails");
+                    EmplaceAtPlace(&m_data[index], std::move(ElementType{}));
+                }
+            }
+            m_size = newSize;
+        }
+    }
+
+    void Resize(const size_t newSize)
+    {
+        Resize(newSize, DefaultContructTag{}); // spied on STL
+    }
+
     // TODOs:
-    // Resize(newSize) + Resize(newSize, default)
-    // Clear()
     // Emplace(whereIter, val)
     // Insert(whereIter, val), 
     // 
@@ -164,6 +214,9 @@ private:
     }
 
 protected:
+    struct DefaultContructTag { // tag to identify default constuction for resize (for now)
+        explicit DefaultContructTag() = default;
+    };
 
     [[nodiscard]] size_t GetCommittedBytes() const { return m_committedPages * m_pageSize; }
     [[nodiscard]] size_t GetReservedBytes() const { return m_reservedPages * m_pageSize; }
@@ -317,6 +370,7 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
     if constexpr (CommitPagesWithReserve)
     {
         // TODO handle this properly
+        assert(false);
     }
     else
     {
