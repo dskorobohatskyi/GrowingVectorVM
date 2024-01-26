@@ -26,6 +26,223 @@ template <size_t N>
 struct is_custom_sizing_policy<CustomSizePolicyTag<N>> : std::true_type {};
 
 
+// TODO check where noexcept should be added
+// Custom iterator classes
+template <typename Container>
+class ConstIterator
+{
+public:
+    // Typedefs for better compatibility
+    using value_type = Container::value_type;
+    using pointer = Container::const_pointer;
+    using reference = Container::const_reference;
+    using difference_type = Container::difference_type;
+    using iterator_category = std::random_access_iterator_tag; // Specify the iterator category
+
+
+    // Constructor
+    ConstIterator() : ptr(nullptr) {}
+    ConstIterator(pointer p) : ptr(p) {}
+
+    // Dereference operator
+    reference operator*() const
+    {
+        return *ptr;
+    }
+
+    // Arrow operator
+    pointer operator->() const
+    {
+        return ptr;
+    }
+
+    // Prefix increment operator
+    ConstIterator& operator++()
+    {
+        ++ptr;
+        return *this;
+    }
+
+    // Postfix increment operator
+    ConstIterator operator++(int)
+    {
+        ConstIterator temp = *this;
+        ++ptr;
+        return temp;
+    }
+
+    // Prefix decrement operator
+    ConstIterator& operator--()
+    {
+        --ptr;
+        return *this;
+    }
+
+    // Postfix decrement operator
+    ConstIterator operator--(int)
+    {
+        ConstIterator temp = *this;
+        --ptr;
+        return temp;
+    }
+
+    // Addition operator for forward movement
+    ConstIterator operator+(difference_type n) const
+    {
+        return ConstIterator(ptr + n);
+    }
+
+    // Subtraction operator for backward movement
+    ConstIterator operator-(difference_type n) const
+    {
+        return ConstIterator(ptr - n);
+    }
+
+    // Compound assignment addition operator
+    ConstIterator& operator+=(difference_type n)
+    {
+        ptr += n;
+        return *this;
+    }
+
+    // Compound assignment subtraction operator
+    ConstIterator& operator-=(difference_type n)
+    {
+        ptr -= n;
+        return *this;
+    }
+
+    // Equality operator
+    bool operator==(const ConstIterator& other) const
+    {
+        return ptr == other.ptr;
+    }
+
+    // Inequality operator
+    bool operator!=(const ConstIterator& other) const
+    {
+        return ptr != other.ptr;
+    }
+
+    // Subscript operator for random access
+    reference operator[](difference_type index) const
+    {
+        return *(ptr + index);
+    }
+
+protected:
+    pointer ptr;  // Pointer to the current element
+};
+
+template <typename Container>
+class Iterator : public ConstIterator<Container>
+{
+public:
+    using Base = ConstIterator<Container>;
+
+    // Typedefs for better compatibility
+    using value_type = Container::value_type;
+    using pointer = Container::pointer;
+    using reference = Container::reference;
+    using difference_type = Container::difference_type;
+    using iterator_category = std::random_access_iterator_tag; // Specify the iterator category
+
+    // Constructor
+    using Base::Base;
+
+    // Dereference operator
+    reference operator*() const
+    {
+        return const_cast<reference>(Base::operator*());
+    }
+
+    // Arrow operator
+    pointer operator->() const
+    {
+        return ptr;
+    }
+
+    // Prefix increment operator
+    Iterator& operator++()
+    {
+        Base::operator++();
+        return *this;
+    }
+
+    // Postfix increment operator
+    Iterator operator++(int)
+    {
+        Iterator temp = *this;
+        Base::operator++();
+        return temp;
+    }
+
+    // Prefix decrement operator
+    Iterator& operator--()
+    {
+        Base::operator--();
+        return *this;
+    }
+
+    // Postfix decrement operator
+    Iterator operator--(int)
+    {
+        Iterator temp = *this;
+        Base::operator--();
+        return temp;
+    }
+
+    // Addition operator for forward movement
+    Iterator operator+(difference_type n) const
+    {
+        return Iterator(ptr + n);
+    }
+
+    // Subtraction operator for backward movement
+    Iterator operator-(difference_type n) const
+    {
+        return Iterator(ptr - n);
+    }
+
+    // Compound assignment addition operator
+    Iterator& operator+=(difference_type n)
+    {
+        Base::operator+=(n);
+        return *this;
+    }
+
+    // Compound assignment subtraction operator
+    Iterator& operator-=(difference_type n)
+    {
+        Base::operator-=(n);
+        return *this;
+    }
+
+    // Equality operator
+    bool operator==(const Iterator& other) const
+    {
+        return ptr == other.ptr;
+    }
+
+    // Inequality operator
+    bool operator!=(const Iterator& other) const
+    {
+        return ptr != other.ptr;
+    }
+
+    // Subscript operator for random access
+    reference operator[](difference_type index) const
+    {
+        return const_cast<reference>(Base::operator[](index));
+    }
+
+private:
+    pointer ptr;  // Pointer to the current element
+
+};
+
+
+
 // TODO read TLB, TLB miss, physical memory access optimization, 512 times less of page faults and TLB misses
 // TODO natvis for GrowingVector
 
@@ -35,24 +252,45 @@ template<typename T, typename ReservePolicy = RAMSizePolicyTag, bool LargePagesE
 class GrowingVectorVM
 {
 public:
-    using ElementType = T;
+    using value_type = T;
     constexpr static size_t ElementSize = sizeof(T);
+
+    // For compatibility with STL
+    using value_type = T;
+    using pointer = T*;
+    using const_pointer = const T*;
+    using reference = T&;
+    using const_reference = const T&;
+    using size_type = size_t;
+    using difference_type = ptrdiff_t;
+
+    using SelfType = GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>;
+    using iterator = Iterator<SelfType>;
+    using const_iterator = ConstIterator<SelfType>;
+
 
     GrowingVectorVM();
     ~GrowingVectorVM() noexcept;
 
-    [[nodiscard]] size_t GetSize() const { return m_size; }
-    [[nodiscard]] size_t GetCapacity() const { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
-    [[nodiscard]] size_t GetReserve() const { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
+    [[nodiscard]] size_type GetSize() const { return m_size; }
+    [[nodiscard]] size_type GetCapacity() const { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
+    [[nodiscard]] size_type GetReserve() const { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
     
-    [[nodiscard]] ElementType* GetData() { return m_data; }
-    [[nodiscard]] const ElementType* GetData() const { return m_data; }
+    [[nodiscard]] pointer GetData() { return m_data; }
+    [[nodiscard]] const_pointer GetData() const { return m_data; }
 
-    [[nodiscard]] const ElementType& Back() const { return this->operator[](GetSize() - 1); }
-    [[nodiscard]] ElementType& Back() { return this->operator[](GetSize() - 1); }
+    [[nodiscard]] const value_type& Back() const { return this->operator[](GetSize() - 1); }
+    [[nodiscard]] value_type& Back() { return this->operator[](GetSize() - 1); }
 
-    [[nodiscard]] const ElementType& Front() const { return this->operator[](0); }
-    [[nodiscard]] ElementType& Front() { return this->operator[](0); }
+    [[nodiscard]] const value_type& Front() const { return this->operator[](0); }
+    [[nodiscard]] value_type& Front() { return this->operator[](0); }
+
+    iterator Begin() const { return iterator{ m_data }; }
+    iterator End() const { return iterator{ m_data + GetSize() }; }
+
+    const_iterator CBegin() const { return const_iterator{ m_data }; }
+    const_iterator CEnd() const { return const_iterator{ m_data + GetSize() }; }
+
 
     bool Reserve(size_t elementAmount)
     {
@@ -61,12 +299,12 @@ public:
 
     [[nodiscard]] inline bool Empty() const { return GetSize() == 0; }
 
-    const ElementType& operator[](size_t index) const
+    const value_type& operator[](size_type index) const
     {
         return const_cast<const GrowingVectorVM*>(this)->operator[](index);
     }
 
-    ElementType& operator[](size_t index)
+    value_type& operator[](size_type index)
     {
         if (index >= GetSize())
         {
@@ -76,7 +314,7 @@ public:
         return m_data[index];
     }
 
-    ElementType& At(size_t index, const ElementType& defValue)
+    value_type& At(size_type index, const value_type& defValue)
     {
         if (index >= GetSize())
         {
@@ -86,27 +324,27 @@ public:
         return this->operator[](index);
     }
 
-    const ElementType& At(size_t index, const ElementType& defValue) const
+    const value_type& At(size_type index, const value_type& defValue) const
     {
         return const_cast<const GrowingVectorVM*>(this)->At(index, defValue);
     }
 
-    void PushBack(const ElementType& value)
+    void PushBack(const value_type& value)
     {
         ReallocateIfNeed();
 
-        //if constexpr (std::is_trivially_copyable_v<ElementType>) // << no boost noticed
+        //if constexpr (std::is_trivially_copyable_v<value_type>) // << no boost noticed
         //{
         //    memcpy(&m_data[GetSize()], &value, ElementSize);
         //}
         //else
         {
-            //new (&m_data[GetSize()]) ElementType(value);
+            //new (&m_data[GetSize()]) value_type(value);
             EmplaceAtPlace(&m_data[GetSize()], value);
         }
     }
 
-    void PushBack(const ElementType&& value)
+    void PushBack(const value_type&& value)
     {
         ReallocateIfNeed();
 
@@ -131,7 +369,7 @@ public:
     }
 
     template <typename U>
-    void Resize(const size_t newSize, const U& def)
+    void Resize(const size_type newSize, const U& def)
     {
         if (newSize == GetCapacity())
         {
@@ -148,32 +386,31 @@ public:
             Reserve(newSize);
 
             // TODO Consider std::uninitialized_default_construct_n() or fill_n when iterators are implemented
-            for (size_t index = GetSize(); index < newSize; index++)
+            for (size_type index = GetSize(); index < newSize; index++)
             {
                 if constexpr (std::is_same_v<T, U>)
                 {
-                    //static_assert(std::is_same_v<T, U>);
-                    EmplaceAtPlace(&m_data[index], ElementType{def});
+                    EmplaceAtPlace(&m_data[index], value_type{def});
                 }
                 else
                 {
                     static_assert(std::is_same_v<U, DefaultContructTag>);
-                    static_assert(std::is_default_constructible_v<ElementType> && "Use Resize with Default value for this type if Resize(const size_t newSize) fails");
-                    EmplaceAtPlace(&m_data[index], std::move(ElementType{}));
+                    static_assert(std::is_default_constructible_v<value_type> && "Use Resize with Default value for this type if Resize(const size_t newSize) fails");
+                    EmplaceAtPlace(&m_data[index], std::move(value_type{}));
                 }
             }
             m_size = newSize;
         }
     }
 
-    void Resize(const size_t newSize)
+    void Resize(const size_type newSize)
     {
         Resize(newSize, DefaultContructTag{}); // spied on STL
     }
 
     // TODOs:
     // Emplace(whereIter, val)
-    // Insert(whereIter, val), 
+    // Insert(whereIter, val), + move semantic
     // 
     // ??? emplace/insert with index? + IndexOf
     // Erase (by value, index, iterator)
@@ -207,9 +444,9 @@ private:
     }
 
     template<typename... Args>
-    void EmplaceAtPlace(ElementType* destination, Args&&... args)
+    void EmplaceAtPlace(value_type* destination, Args&&... args)
     {
-        new (destination) ElementType(std::forward<Args...>(args)...);
+        new (destination) value_type(std::forward<Args...>(args)...);
         ++m_size;
     }
 
@@ -250,9 +487,9 @@ protected:
     /////////////////////////////////////////////////////////////////////////////////////////
 
 private:
-    ElementType* m_data;
-    //size_t m_capacity; // capacity is calculated based on used pages and ElementSize value dynamically
-    size_t m_size;
+    value_type* m_data;
+    //size_type m_capacity; // capacity is calculated based on used pages and ElementSize value dynamically
+    size_type m_size;
 
     size_t m_committedPages;
     size_t m_reservedPages;
@@ -354,7 +591,7 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
     }
 
     // Guiding by Exception Safety Guarantee, let's modify state of the object only if everything goes successfully
-    m_data = reinterpret_cast<ElementType*>(lpvBase);
+    m_data = reinterpret_cast<pointer>(lpvBase);
 
     m_reservedPages = requiredPages;
     m_committedPages = CommitPagesWithReserve ? m_reservedPages : 0;
@@ -406,5 +643,25 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
         // TODO debug output
 
         return true;
+    }
+}
+
+
+
+namespace std
+{
+    // begin and end implementations - for compatibility with range-based for
+    template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+    inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled,CommitPagesWithReserve>::iterator
+        begin(GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
+    {
+        return container.Begin();
+    }
+
+    template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+    inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::iterator
+        end(GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
+    {
+        return container.End();
     }
 }
