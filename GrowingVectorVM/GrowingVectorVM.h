@@ -26,7 +26,6 @@ template <size_t N>
 struct is_custom_sizing_policy<CustomSizePolicyTag<N>> : std::true_type {};
 
 
-// TODO check where noexcept should be added
 // Custom iterator classes
 template <typename Container>
 class ConstIterator
@@ -41,7 +40,7 @@ public:
 
 
     // Constructor
-    ConstIterator(Container::pointer p) : ptr(p) {}
+    ConstIterator(Container::pointer p) noexcept : ptr(p) {}
 
     // Dereference operator
     reference operator*() const
@@ -50,20 +49,20 @@ public:
     }
 
     // Arrow operator
-    pointer operator->() const
+    pointer operator->() const noexcept
     {
         return ptr;
     }
 
     // Prefix increment operator
-    ConstIterator& operator++()
+    ConstIterator& operator++() noexcept
     {
         ++ptr;
         return *this;
     }
 
     // Postfix increment operator
-    ConstIterator operator++(int)
+    ConstIterator operator++(int) noexcept
     {
         ConstIterator temp = *this;
         ++ptr;
@@ -71,14 +70,14 @@ public:
     }
 
     // Prefix decrement operator
-    ConstIterator& operator--()
+    ConstIterator& operator--() noexcept
     {
         --ptr;
         return *this;
     }
 
     // Postfix decrement operator
-    ConstIterator operator--(int)
+    ConstIterator operator--(int) noexcept
     {
         ConstIterator temp = *this;
         --ptr;
@@ -86,45 +85,45 @@ public:
     }
 
     // Addition operator for forward movement
-    ConstIterator operator+(difference_type n) const
+    ConstIterator operator+(difference_type n) const noexcept
     {
         return ConstIterator(ptr + n);
     }
 
     // Subtraction operator for backward movement
-    ConstIterator operator-(difference_type n) const
+    ConstIterator operator-(difference_type n) const noexcept
     {
         return ConstIterator(ptr - n);
     }
 
     // Compound assignment addition operator
-    ConstIterator& operator+=(difference_type n)
+    ConstIterator& operator+=(difference_type n) noexcept
     {
         ptr += n;
         return *this;
     }
 
     // Compound assignment subtraction operator
-    ConstIterator& operator-=(difference_type n)
+    ConstIterator& operator-=(difference_type n) noexcept
     {
         ptr -= n;
         return *this;
     }
 
     // Equality operator
-    bool operator==(const ConstIterator& other) const
+    bool operator==(const ConstIterator& other) const noexcept
     {
         return ptr == other.ptr;
     }
 
     // Inequality operator
-    bool operator!=(const ConstIterator& other) const
+    bool operator!=(const ConstIterator& other) const noexcept
     {
         return ptr != other.ptr;
     }
 
     // Subscript operator for random access
-    reference operator[](difference_type index) const
+    reference operator[](difference_type index) const noexcept
     {
         return *(ptr + index);
     }
@@ -150,26 +149,26 @@ public:
     using Base::Base;
 
     // Dereference operator
-    reference operator*() const
+    reference operator*() const noexcept
     {
         return const_cast<reference>(Base::operator*());
     }
 
     // Arrow operator
-    pointer operator->() const
+    pointer operator->() const noexcept
     {
         return this->ptr;
     }
 
     // Prefix increment operator
-    Iterator& operator++()
+    Iterator& operator++() noexcept
     {
         Base::operator++();
         return *this;
     }
 
     // Postfix increment operator
-    Iterator operator++(int)
+    Iterator operator++(int) noexcept
     {
         Iterator temp = *this;
         Base::operator++();
@@ -177,14 +176,14 @@ public:
     }
 
     // Prefix decrement operator
-    Iterator& operator--()
+    Iterator& operator--() noexcept
     {
         Base::operator--();
         return *this;
     }
 
     // Postfix decrement operator
-    Iterator operator--(int)
+    Iterator operator--(int) noexcept
     {
         Iterator temp = *this;
         Base::operator--();
@@ -192,45 +191,45 @@ public:
     }
 
     // Addition operator for forward movement
-    Iterator operator+(difference_type n) const
+    Iterator operator+(difference_type n) const noexcept
     {
         return Iterator(this->ptr + n);
     }
 
     // Subtraction operator for backward movement
-    Iterator operator-(difference_type n) const
+    Iterator operator-(difference_type n) const noexcept
     {
         return Iterator(this->ptr - n);
     }
 
     // Compound assignment addition operator
-    Iterator& operator+=(difference_type n)
+    Iterator& operator+=(difference_type n) noexcept
     {
         Base::operator+=(n);
         return *this;
     }
 
     // Compound assignment subtraction operator
-    Iterator& operator-=(difference_type n)
+    Iterator& operator-=(difference_type n) noexcept
     {
         Base::operator-=(n);
         return *this;
     }
 
     // Equality operator
-    bool operator==(const Iterator& other) const
+    bool operator==(const Iterator& other) const noexcept
     {
         return this->ptr == other.ptr;
     }
 
     // Inequality operator
-    bool operator!=(const Iterator& other) const
+    bool operator!=(const Iterator& other) const noexcept
     {
         return this->ptr != other.ptr;
     }
 
     // Subscript operator for random access
-    reference operator[](difference_type index) const
+    reference operator[](difference_type index) const noexcept
     {
         return const_cast<reference>(Base::operator[](index));
     }
@@ -268,12 +267,12 @@ public:
     GrowingVectorVM();
     ~GrowingVectorVM() noexcept;
 
-    [[nodiscard]] size_type GetSize() const { return m_size; }
-    [[nodiscard]] size_type GetCapacity() const { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
-    [[nodiscard]] size_type GetReserve() const { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
+    [[nodiscard]] size_type GetSize() const noexcept { return m_size; }
+    [[nodiscard]] size_type GetCapacity() const noexcept { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
+    [[nodiscard]] size_type GetReserve() const noexcept { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
     
-    [[nodiscard]] pointer GetData() { return m_data; }
-    [[nodiscard]] const_pointer GetData() const { return m_data; }
+    [[nodiscard]] pointer GetData() noexcept { return m_data; }
+    [[nodiscard]] const_pointer GetData() const noexcept { return m_data; }
 
     [[nodiscard]] const value_type& Back() const { return this->operator[](GetSize() - 1); }
     [[nodiscard]] value_type& Back() { return this->operator[](GetSize() - 1); }
@@ -281,11 +280,11 @@ public:
     [[nodiscard]] const value_type& Front() const { return this->operator[](0); }
     [[nodiscard]] value_type& Front() { return this->operator[](0); }
 
-    iterator Begin() const { return iterator{ m_data }; }
-    iterator End() const { return iterator{ m_data + GetSize() }; }
+    [[nodiscard]] iterator Begin() const noexcept { return iterator{ m_data }; }
+    [[nodiscard]] iterator End() const noexcept { return iterator{ m_data + GetSize() }; }
 
-    const_iterator CBegin() const { return const_iterator{ m_data }; }
-    const_iterator CEnd() const { return const_iterator{ m_data + GetSize() }; }
+    [[nodiscard]] const_iterator CBegin() const noexcept { return const_iterator{ m_data }; }
+    [[nodiscard]] const_iterator CEnd() const noexcept { return const_iterator{ m_data + GetSize() }; }
 
 
     bool Reserve(size_t elementAmount)
@@ -293,7 +292,7 @@ public:
         return CommitOverallMemory(elementAmount * ElementSize);
     }
 
-    [[nodiscard]] inline bool Empty() const { return GetSize() == 0; }
+    [[nodiscard]] inline bool Empty() const noexcept { return GetSize() == 0; }
 
     const value_type& operator[](size_type index) const
     {
@@ -353,7 +352,7 @@ public:
         EmplaceAtPlace(&m_data[GetSize()], std::forward<Args...>(args)...);
     }
 
-    void Clear()
+    void Clear() noexcept
     {
         if (GetSize() == 0)
         {
@@ -450,10 +449,10 @@ protected:
         explicit DefaultContructTag() = default;
     };
 
-    [[nodiscard]] size_t GetCommittedBytes() const { return m_committedPages * m_pageSize; }
-    [[nodiscard]] size_t GetReservedBytes() const { return m_reservedPages * m_pageSize; }
+    [[nodiscard]] size_t GetCommittedBytes() const noexcept { return m_committedPages * m_pageSize; }
+    [[nodiscard]] size_t GetReservedBytes() const noexcept { return m_reservedPages * m_pageSize; }
 
-    constexpr static size_t CalculateAlignedMemorySize(size_t bytesToAllocate, size_t alignment)
+    [[nodiscard]] constexpr static size_t CalculateAlignedMemorySize(size_t bytesToAllocate, size_t alignment) noexcept
     {
         // Calculate the remainder when bytes_to_allocate is divided by alignment
         const size_t remainder = bytesToAllocate % alignment;
@@ -467,16 +466,19 @@ protected:
     static_assert(CalculateAlignedMemorySize(4096, 4096) == 4096);
     static_assert(CalculateAlignedMemorySize(4097, 4096) == 8192);
 
-    constexpr static size_t CalculatePageCount(size_t bytes, size_t alignment, size_t pageSize)
+    [[nodiscard]] constexpr static size_t CalculatePageCount(size_t bytes, size_t alignment, size_t pageSize)
     {
+        assert(pageSize != 0);
+
         const size_t alignedBytes = CalculateAlignedMemorySize(bytes, alignment);
         assert(alignedBytes % alignment == 0);
         assert(alignedBytes % pageSize == 0); // TODO reformulate
         return alignedBytes / pageSize;
     }
 
-    constexpr static size_t CalculateObjectAmountForNBytes(size_t bytes)
+    [[nodiscard]] constexpr static size_t CalculateObjectAmountForNBytes(size_t bytes)
     {
+        static_assert(ElementSize != 0);
         return bytes / ElementSize;
     }
     /////////////////////////////////////////////////////////////////////////////////////////
