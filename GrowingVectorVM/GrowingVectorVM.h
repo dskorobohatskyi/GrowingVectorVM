@@ -32,15 +32,15 @@ class ConstIterator
 {
 public:
     // Typedefs for better compatibility
-    using value_type = Container::value_type;
-    using pointer = Container::const_pointer;
-    using reference = Container::const_reference;
-    using difference_type = Container::difference_type;
+    using value_type = typename Container::value_type;
+    using pointer = typename Container::const_pointer;
+    using reference = typename Container::const_reference;
+    using difference_type = typename Container::difference_type;
     using iterator_category = std::random_access_iterator_tag; // Specify the iterator category
 
 
     // Constructor
-    ConstIterator(Container::pointer p) noexcept : ptr(p) {}
+    ConstIterator(typename Container::pointer p) noexcept : ptr(p) {}
 
     // Dereference operator
     reference operator*() const
@@ -129,7 +129,7 @@ public:
     }
 
 protected:
-    Container::pointer ptr;  // Pointer to the current element
+    typename Container::pointer ptr;  // Pointer to the current element
 };
 
 template <typename Container>
@@ -139,10 +139,10 @@ public:
     using Base = ConstIterator<Container>;
 
     // Typedefs for better compatibility
-    using value_type = Container::value_type;
-    using pointer = Container::pointer;
-    using reference = Container::reference;
-    using difference_type = Container::difference_type;
+    using value_type = typename Container::value_type;
+    using pointer = typename Container::pointer;
+    using reference = typename Container::reference;
+    using difference_type = typename Container::difference_type;
     using iterator_category = std::random_access_iterator_tag; // Specify the iterator category
 
     // Constructor
