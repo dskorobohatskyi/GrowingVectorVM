@@ -41,8 +41,7 @@ public:
 
 
     // Constructor
-    ConstIterator() : ptr(nullptr) {}
-    ConstIterator(pointer p) : ptr(p) {}
+    ConstIterator(Container::pointer p) : ptr(p) {}
 
     // Dereference operator
     reference operator*() const
@@ -131,7 +130,7 @@ public:
     }
 
 protected:
-    pointer ptr;  // Pointer to the current element
+    Container::pointer ptr;  // Pointer to the current element
 };
 
 template <typename Container>
@@ -159,7 +158,7 @@ public:
     // Arrow operator
     pointer operator->() const
     {
-        return ptr;
+        return this->ptr;
     }
 
     // Prefix increment operator
@@ -195,13 +194,13 @@ public:
     // Addition operator for forward movement
     Iterator operator+(difference_type n) const
     {
-        return Iterator(ptr + n);
+        return Iterator(this->ptr + n);
     }
 
     // Subtraction operator for backward movement
     Iterator operator-(difference_type n) const
     {
-        return Iterator(ptr - n);
+        return Iterator(this->ptr - n);
     }
 
     // Compound assignment addition operator
@@ -221,13 +220,13 @@ public:
     // Equality operator
     bool operator==(const Iterator& other) const
     {
-        return ptr == other.ptr;
+        return this->ptr == other.ptr;
     }
 
     // Inequality operator
     bool operator!=(const Iterator& other) const
     {
-        return ptr != other.ptr;
+        return this->ptr != other.ptr;
     }
 
     // Subscript operator for random access
@@ -235,10 +234,6 @@ public:
     {
         return const_cast<reference>(Base::operator[](index));
     }
-
-private:
-    pointer ptr;  // Pointer to the current element
-
 };
 
 
@@ -267,6 +262,7 @@ public:
     using SelfType = GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>;
     using iterator = Iterator<SelfType>;
     using const_iterator = ConstIterator<SelfType>;
+    // TODO reverse_iterator
 
 
     GrowingVectorVM();
