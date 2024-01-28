@@ -371,34 +371,34 @@ public:
     template <typename U>
     void Resize(const size_type newSize, const U& def)
     {
-        if (newSize == GetCapacity())
+        if (newSize == GetSize())
         {
             return;
         }
-        else if (newSize < GetCapacity())
+        else if (newSize < GetSize())
         {
             void* const erasingDestination = (m_data + newSize);
-            memset(erasingDestination, 0, (m_size - newSize) * ElementSize);
+            memset(erasingDestination, 0, (GetSize() - newSize) * ElementSize);
             m_size = newSize;
         }
-        else // newSize > GetCapacity()
+        else // newSize > GetSize()
         {
-            Reserve(newSize);
-
-            // TODO Consider std::uninitialized_default_construct_n() or fill_n when iterators are implemented
-            for (size_type index = GetSize(); index < newSize; index++)
+            if (newSize > GetCapacity())
             {
-                if constexpr (std::is_same_v<T, U>)
-                {
-                    EmplaceAtPlace(&m_data[index], value_type{def});
-                }
-                else
-                {
-                    static_assert(std::is_same_v<U, DefaultContructTag>);
-                    static_assert(std::is_default_constructible_v<value_type> && "Use Resize with Default value for this type if Resize(const size_t newSize) fails");
-                    EmplaceAtPlace(&m_data[index], std::move(value_type{}));
-                }
+                Reserve(newSize);
             }
+
+            if constexpr (std::is_same_v<T, U>)
+            {
+                std::uninitialized_fill_n(End(), newSize - GetSize(), def);
+            }
+            else
+            {
+                static_assert(std::is_same_v<U, DefaultContructTag>);
+                static_assert(std::is_default_constructible_v<value_type> && "Use Resize with Default value for this type if Resize(const size_t newSize) fails");
+                std::uninitialized_default_construct_n(End(), newSize - GetSize());
+            }
+
             m_size = newSize;
         }
     }
@@ -415,7 +415,6 @@ public:
     // ??? emplace/insert with index? + IndexOf
     // Erase (by value, index, iterator)
 
-    // iterators Random access, begin/end
     // compatibility with stl, generate, transform algorithms for ex.
 
 private:
