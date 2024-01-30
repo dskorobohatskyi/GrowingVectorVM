@@ -4,11 +4,9 @@
 #include <iostream>
 #include <vector>
 #include <assert.h>
+
 #include "GrowingVectorVM.h"
 
-
-// TODOs:
-// Reorganize project (potentially cmake can be used)
 
 #define KB(x) (x) * (size_t)1024
 #define MB(x) (KB(x)) * 1024
@@ -165,30 +163,20 @@ int main()
     GrowingVectorVM<MyHugeStruct> testMyVector;
     //bool success = testMyVector.Reserve(136'216'567); // OK  - 34,871,443,456 bytes allocated
     bool success = testMyVector.Reserve(100'000'000); // OK  12'500'000 pages = 51,200,000,000 bytes
-    assert(success);
-    for (int i = 0; i < testMyVector.GetCapacity(); i++)
+    if (success)
     {
-        if (emitOnEveryNthIteration(10000))
+        for (int i = 0; i < testMyVector.GetCapacity(); i++)
         {
-            std::cout << "Capacity=" << testMyVector.GetCapacity() << ", Size=" << testMyVector.GetSize() << ", Alloc=" << testMyVector.GetCapacity() * sizeof(MyHugeStruct) << "\n";
+            if (emitOnEveryNthIteration(10000))
+            {
+                std::cout << "Capacity=" << testMyVector.GetCapacity() << ", Size=" << testMyVector.GetSize() << ", Alloc=" << testMyVector.GetCapacity() * sizeof(MyHugeStruct) << "\n";
+            }
+            testMyVector.PushBack({});
         }
-        testMyVector.PushBack({});
+        testMyVector.Clear();
     }
-    testMyVector.Clear();
 
     return 0;
 
 
 }
-
-
-
-#include <process.h>
-
-//typedef void(__stdcall* _tls_callback_type)(void*, unsigned long, void*);
-void onExitCallback(void*, unsigned long, void*)
-{
-    std::cout << "goodbye";
-}
-
-// _register_thread_local_exe_atexit_callback(&onExitCallback);
