@@ -18,6 +18,9 @@ static_assert(MB(2) == 1'048'576 * 2);
 static_assert(GB(4) == 4'294'967'296);
 
 
+// TODO GoogleBench
+// cmp header only and static lib/dll (provide switching in cmake)
+// analyze how to grab metrics about compilation time?
 
 
 struct alignas(256) MyHugeStruct
@@ -73,11 +76,24 @@ int main()
     (bar.Begin()[0]).a = 2; // ok
 
     std::vector<B> bad;
+    auto bad_begin = bad.begin();
+    auto bad_end = bad.end();
+    bad.emplace(bad.begin(), 3);
+    //assert(bad_begin != bad_end);
+    //bad.insert(bad.end() + 1, 3, { 4 }); // fails
+    
     //bad.resize(3); // compilation error
     std::vector<A> aad;
     aad.resize(3); // OK
     //bad.cbegin()->a = 2; // fail
 
+    bar.Clear();
+    for (const auto t : { 1, 2, 3, 4 })
+    {
+        bar.Insert(bar.Begin(), { t });
+    }
+
+    //bar.Insert(bar.End() + 1, { 10 });// fails
 
     constexpr size_t halfRAMHackyValue = GB(16);
     GrowingVectorVM<double, CustomSizePolicyTag<halfRAMHackyValue>> vectorInf;
@@ -167,7 +183,7 @@ int main()
     {
         for (int i = 0; i < testMyVector.GetCapacity(); i++)
         {
-            if (emitOnEveryNthIteration(10000))
+            if (emitOnEveryNthIteration(100000))
             {
                 std::cout << "Capacity=" << testMyVector.GetCapacity() << ", Size=" << testMyVector.GetSize() << ", Alloc=" << testMyVector.GetCapacity() * sizeof(MyHugeStruct) << "\n";
             }

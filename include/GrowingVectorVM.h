@@ -1,12 +1,20 @@
 #pragma once
 
-#include <stdint.h>
+// TODO Think about user experience with including your header-only library
+// Provide switching mechanism with static or dynamic library later.
+// Analyze which implemented functionality can be wrapped by free functions and be moved to cpp to reduce the compilation time.
+#ifdef WIN32
 #include <windows.h>
 #include <memoryapi.h>
 
 #include <sysinfoapi.h>                 // for GetPhysicallyInstalledSystemMemory
+#else
+#error Unsupported
+#endif
 
+#include <stdint.h>
 #include <iostream>
+#include <compare>          // for operator <=>
 
 struct RAMSizePolicyTag {};
 struct RAMDoubleSizePolicyTag {};
@@ -26,6 +34,8 @@ template <size_t N>
 struct is_custom_sizing_policy<CustomSizePolicyTag<N>> : std::true_type {};
 
 
+// TODO analyze what can be constexpr and nodiscard again in the code?
+// TODO validate that iterators are compatible with each other (_Compat method in STL)
 // Custom iterator classes
 template <typename Container>
 class ConstIterator
@@ -84,6 +94,12 @@ public:
         return temp;
     }
 
+    // Difference for two iterators
+    difference_type operator-(const ConstIterator other) const noexcept
+    {
+        return ptr - other.ptr;
+    }
+
     // Addition operator for forward movement
     ConstIterator operator+(difference_type n) const noexcept
     {
@@ -99,6 +115,7 @@ public:
     // Compound assignment addition operator
     ConstIterator& operator+=(difference_type n) noexcept
     {
+        // TODO verify offset
         ptr += n;
         return *this;
     }
@@ -106,6 +123,7 @@ public:
     // Compound assignment subtraction operator
     ConstIterator& operator-=(difference_type n) noexcept
     {
+        // TODO verify offset
         ptr -= n;
         return *this;
     }
@@ -116,11 +134,17 @@ public:
         return ptr == other.ptr;
     }
 
+    // TODO if cpp standard is c++20 then <=>, otherwise need to implement all the needed cmp operators
     // Inequality operator
-    bool operator!=(const ConstIterator& other) const noexcept
+    std::strong_ordering operator<=>(const ConstIterator& other) const
     {
-        return ptr != other.ptr;
+        return ptr <=> other.ptr;
     }
+    // else < c++20
+    //bool operator!=(const ConstIterator& other) const noexcept
+    //{
+    //    return ptr != other.ptr;
+    //}
 
     // Subscript operator for random access
     reference operator[](difference_type index) const noexcept
@@ -188,6 +212,12 @@ public:
         Iterator temp = *this;
         Base::operator--();
         return temp;
+    }
+
+    // Difference for two iterators
+    difference_type operator-(const Iterator other) const noexcept
+    {
+        return this->ptr - other.ptr;
     }
 
     // Addition operator for forward movement
@@ -280,6 +310,7 @@ public:
     [[nodiscard]] const value_type& Front() const { return this->operator[](0); }
     [[nodiscard]] value_type& Front() { return this->operator[](0); }
 
+    // TODO Begin and End should return nullptr if vec is empty or not?
     [[nodiscard]] iterator Begin() const noexcept { return iterator{ m_data }; }
     [[nodiscard]] iterator End() const noexcept { return iterator{ m_data + GetSize() }; }
 
@@ -326,8 +357,7 @@ public:
 
     void PushBack(const value_type& value)
     {
-        ReallocateIfNeed();
-
+        // TODO profile why this code is not effective as expected
         //if constexpr (std::is_trivially_copyable_v<value_type>) // << no boost noticed
         //{
         //    memcpy(&m_data[GetSize()], &value, ElementSize);
@@ -335,30 +365,79 @@ public:
         //else
         {
             //new (&m_data[GetSize()]) value_type(value);
-            EmplaceAtPlace(&m_data[GetSize()], value);
+            EmplaceBack(value);
         }
     }
 
     void PushBack(const value_type&& value)
     {
-        ReallocateIfNeed();
-
-        EmplaceAtPlace(&m_data[GetSize()], std::move(value));
+        EmplaceBack(std::move(value));
     }
 
     template<typename... Args>
     void EmplaceBack(Args&&... args)
     {
+        ReallocateIfNeed();
         EmplaceAtPlace(&m_data[GetSize()], std::forward<Args...>(args)...);
+    }
+
+    iterator Insert(const_iterator position, const value_type& value)
+    {
+        return Emplace(position, value);
+    }
+    iterator Insert(const_iterator position, const value_type&& value)
+    {
+        return Emplace(position, std::move(value));
+    }
+
+    template<typename... Args>
+    iterator Emplace(const_iterator position, Args&&... args)
+    {
+        // Hack for now
+        if (Empty())
+        {
+            EmplaceBack(std::forward<Args...>(args)...);
+            return Begin();
+        }
+
+        // Ensure the position is within the bounds of the vector
+        if ((position < CBegin()) || (position > CEnd()))
+        {
+            assert(false);
+            return End();  // Return end iterator as an indication of failure
+        }
+
+        // Calculate the index corresponding to the iterator
+        const difference_type index = std::distance(CBegin(), position);
+
+        ReallocateIfNeed();
+
+        // Shift elements to the right
+        if constexpr (std::is_move_assignable_v<value_type>)
+        {
+            std::move_backward(Begin() + index, End() - 1, End());
+        }
+        else
+        {
+            std::copy_backward(Begin() + index, End() - 1, End());
+        }
+
+        EmplaceAtPlace(&m_data[index], std::forward<Args...>(args)...);
+
+        // Return iterator pointing to the inserted element
+        return Begin() + index;
     }
 
     void Clear() noexcept
     {
+        // Didn't use Resize(0) to not trigger assert(is_default_constructible) in else-constexpr section there (thank you c++)
+
         if (GetSize() == 0)
         {
             return;
         }
 
+        // TODO probably it makes sense to encapsulate memset call in separate function
         memset(m_data, 0, GetSize() * ElementSize);
         m_size = 0;
     }
@@ -404,13 +483,12 @@ public:
     }
 
     // TODOs:
-    // Emplace(whereIter, val)
-    // Insert(whereIter, val), + move semantic
-    // 
     // ??? emplace/insert with index? + IndexOf
-    // Erase (by value, index, iterator)
+    // insert(where, count, value)
+    // Erase (by value, index, iterator), first/all
 
     // compatibility with stl, generate, transform algorithms for ex.
+    // std::distance is already covered by Iterator::operator-(Iterator)
 
 private:
     bool ReserveBytes(size_t requestedBytes);
