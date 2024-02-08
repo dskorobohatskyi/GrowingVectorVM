@@ -19,13 +19,12 @@ if (BUILD_EXAMPLES)
     add_subdirectory(examples)
 
     if (MAKE_EXAMPLES_DEFAULT_PROJECT)
-        # Set Examples as the default target
-        set_property(DIRECTORY ${PROJECT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Examples)
+    # Set Examples as the default target
+    set_property(DIRECTORY ${PROJECT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Examples)
     endif ()
 endif ()
 
-# Add tests if needed
-# add_executable(Tests ${PROJECT_SOURCE_DIR}/tests/test_main.cpp ${PROJECT_SOURCE_DIR}/tests/your_tests.cpp)
-# target_link_libraries(Tests PRIVATE GrowingVectorVM)
-# enable_testing()
-# add_test(NAME YourTests COMMAND Tests)
+if (BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif ()
