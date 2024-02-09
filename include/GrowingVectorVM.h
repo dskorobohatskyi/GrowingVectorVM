@@ -275,7 +275,6 @@ public:
 // TODO read TLB, TLB miss, physical memory access optimization, 512 times less of page faults and TLB misses
 // TODO natvis for GrowingVector
 
-// TODO test on smth bigger than int (probably with alignas())
 // TODO to support large pages CommitPagesWithReserve option should work
 template<typename T, typename ReservePolicy = RAMSizePolicyTag, bool LargePagesEnabled = false, bool CommitPagesWithReserve = false || LargePagesEnabled>
 class GrowingVectorVM
@@ -405,6 +404,7 @@ public:
         EmplaceAtPlace(&m_data[GetSize()], std::forward<Args...>(args)...);
     }
 
+
     iterator Insert(const_iterator position, const value_type& value)
     {
         return Emplace(position, value);
@@ -412,6 +412,44 @@ public:
     iterator Insert(const_iterator position, const value_type&& value)
     {
         return Emplace(position, std::move(value));
+    }
+    iterator InsertAtIndex(difference_type index, const value_type& value)
+    {
+        return EmplaceAtIndex(index, value);
+    }
+    iterator InsertAtIndex(difference_type index, const value_type&& value)
+    {
+        return EmplaceAtIndex(index, std::move(value));
+    }
+
+    template<typename... Args>
+    iterator EmplaceAtIndex(difference_type index, Args&&... args)
+    {
+        // position is ignored if the container is empty
+        if (Empty())
+        {
+            EmplaceBack(std::forward<Args...>(args)...);
+            return Begin();
+        }
+
+        assert(index >= 0 && index < (difference_type)GetSize());
+
+        ReallocateIfNeed();
+
+        // Shift elements to the right
+        if constexpr (std::is_move_assignable_v<value_type>)
+        {
+            std::move_backward(Begin() + index, End() - 1, End());
+        }
+        else
+        {
+            std::copy_backward(Begin() + index, End() - 1, End());
+        }
+
+        EmplaceAtPlace(&m_data[index], std::forward<Args...>(args)...);
+
+        // Return iterator pointing to the inserted element
+        return Begin() + index;
     }
 
     template<typename... Args>
@@ -434,22 +472,7 @@ public:
         // Calculate the index corresponding to the iterator
         const difference_type index = std::distance(CBegin(), position);
 
-        ReallocateIfNeed();
-
-        // Shift elements to the right
-        if constexpr (std::is_move_assignable_v<value_type>)
-        {
-            std::move_backward(Begin() + index, End() - 1, End());
-        }
-        else
-        {
-            std::copy_backward(Begin() + index, End() - 1, End());
-        }
-
-        EmplaceAtPlace(&m_data[index], std::forward<Args...>(args)...);
-
-        // Return iterator pointing to the inserted element
-        return Begin() + index;
+        return EmplaceAtIndex(index, std::forward<Args...>(args)...);
     }
 
     void Clear() noexcept
@@ -507,7 +530,7 @@ public:
     }
 
     // TODOs:
-    // ??? emplace/insert with index? + IndexOf
+    // IndexOf + Contains
     // insert(where, count, value)
     // Erase (by value, index, iterator), first/all
 
