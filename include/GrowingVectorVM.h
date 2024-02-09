@@ -13,8 +13,12 @@
 #endif
 
 #include <stdint.h>
-#include <iostream>
-#include <compare>          // for operator <=>
+#include <assert.h>
+#include <iostream>                     // TODO remove this dependency, consider printf as much lightweight analogue
+#include <compare>                      // for operator <=>
+#include <xutility>                     // for std::reverse_iterator
+#include <stdexcept>                    // for std::logic_error
+#include <memory>                       // for uninitialized_default_construct_n and uninitialized_fill_n (potential candidate to implement on my own)
 
 struct RAMSizePolicyTag {};
 struct RAMDoubleSizePolicyTag {};
@@ -51,6 +55,7 @@ public:
 
     // Constructor
     ConstIterator(typename Container::pointer p) noexcept : ptr(p) {}
+    ConstIterator(nullptr_t) = delete; // mark this as delete to not create iterator over direct null ptr
 
     // Dereference operator
     reference operator*() const
@@ -291,8 +296,11 @@ public:
     using SelfType = GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>;
     using iterator = Iterator<SelfType>;
     using const_iterator = ConstIterator<SelfType>;
-    // TODO reverse_iterator
 
+    // that's not good to include additional libraries to own one, since that's increase compilation time and actual codesize during includes.
+    // but I really don't have time now to implement my own version of reverse_iterator, so I reuse STD one.
+    using reverse_iterator = std::reverse_iterator<iterator>;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
     GrowingVectorVM();
     ~GrowingVectorVM() noexcept;
@@ -310,12 +318,28 @@ public:
     [[nodiscard]] const value_type& Front() const { return this->operator[](0); }
     [[nodiscard]] value_type& Front() { return this->operator[](0); }
 
-    // TODO Begin and End should return nullptr if vec is empty or not?
-    [[nodiscard]] iterator Begin() const noexcept { return iterator{ m_data }; }
-    [[nodiscard]] iterator End() const noexcept { return iterator{ m_data + GetSize() }; }
+    // Note from cppreference: https://en.cppreference.com/w/cpp/container/vector/begin
+    // If the vector is empty, the returned (begin) iterator will be equal to end().
+    // 
+    // Since GrowingVector is implemented on virtual memory and does internal memory reserve in ctor,
+    // then m_data is valid ptr even if container is empty.
+    // Indicator of emptiness are: Begin() == End() so this is supported in this functionality.
+    [[nodiscard]] iterator Begin() noexcept { return iterator{ m_data }; }
+    [[nodiscard]] const_iterator Begin() const noexcept { return const_iterator{ m_data }; }
+    [[nodiscard]] iterator End() noexcept { return iterator{ m_data + GetSize() }; }
+    [[nodiscard]] const_iterator End() const noexcept { return const_iterator{ m_data + GetSize() }; }
 
     [[nodiscard]] const_iterator CBegin() const noexcept { return const_iterator{ m_data }; }
     [[nodiscard]] const_iterator CEnd() const noexcept { return const_iterator{ m_data + GetSize() }; }
+
+    // Reverse versions
+    [[nodiscard]] reverse_iterator RBegin() noexcept { return reverse_iterator{ End() }; }
+    [[nodiscard]] const_reverse_iterator RBegin() const noexcept { return const_reverse_iterator{ End() }; }
+    [[nodiscard]] reverse_iterator REnd() noexcept { return reverse_iterator{ Begin() }; }
+    [[nodiscard]] const_reverse_iterator REnd() const noexcept { return const_reverse_iterator{ Begin() }; }
+
+    [[nodiscard]] const_reverse_iterator CRBegin() const noexcept { return const_reverse_iterator{ End() }; }
+    [[nodiscard]] const_reverse_iterator CREnd() const noexcept { return const_reverse_iterator{ Begin() }; }
 
 
     bool Reserve(size_t elementAmount)
@@ -393,7 +417,7 @@ public:
     template<typename... Args>
     iterator Emplace(const_iterator position, Args&&... args)
     {
-        // Hack for now
+        // position is ignored if the container is empty
         if (Empty())
         {
             EmplaceBack(std::forward<Args...>(args)...);
