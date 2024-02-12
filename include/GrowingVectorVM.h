@@ -304,18 +304,59 @@ public:
     GrowingVectorVM();
     ~GrowingVectorVM() noexcept;
 
-    [[nodiscard]] size_type GetSize() const noexcept { return m_size; }
-    [[nodiscard]] size_type GetCapacity() const noexcept { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
-    [[nodiscard]] size_type GetReserve() const noexcept { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
+    // From cppreference: After the move, other is guaranteed to be empty().
+    GrowingVectorVM(const GrowingVectorVM&& other)
+        : m_data(std::exchange(other.m_data, nullptr))
+        , m_size(std::exchange(other.m_size, 0))
+        , m_committedPages(std::exchange(other.m_committedPages, 0))
+        , m_reservedPages(std::exchange(other.m_reservedPages, 0))
+        , m_pageSize(std::exchange(other.m_pageSize, 0))
+    {
+    }
+
+    GrowingVectorVM& operator=(const GrowingVectorVM&& other)
+    {
+        if (this != &other)
+        {
+            ReleaseMemory();
+
+            m_data = std::exchange(other.m_data, nullptr);
+            m_size = std::exchange(other.m_size, 0);
+            m_committedPages = std::exchange(other.m_committedPages, 0);
+            m_reservedPages = std::exchange(other.m_reservedPages, 0);
+            m_pageSize = std::exchange(other.m_pageSize, 0);
+        }
+
+        return *this;
+    }
+
+    // Disable copy construction for now, since memory reserve should be done for another vector as well and it will throw without careful setup.
+    GrowingVectorVM(const GrowingVectorVM& other) = delete;
+    GrowingVectorVM& operator=(const GrowingVectorVM& other) = delete;
+    /////////////////////////////////////////////////////////////////////
+    //GrowingVectorVM(const size_type count, const value_type& value); // TODO
+
+    [[nodiscard]] inline size_type GetSize() const noexcept { return m_size; }
+    [[nodiscard]] inline size_type GetCapacity() const noexcept { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
+    [[nodiscard]] inline size_type GetReserve() const noexcept { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
+    [[nodiscard]] size_type GetPageSize() const noexcept
+    {
+        if (m_pageSize == 0) [[unlikely]]
+        {
+            m_pageSize = CalculatePageSize();
+        }
+
+        return m_pageSize;
+    }
     
-    [[nodiscard]] pointer GetData() noexcept { return m_data; }
-    [[nodiscard]] const_pointer GetData() const noexcept { return m_data; }
+    [[nodiscard]] inline pointer GetData() noexcept { return m_data; }
+    [[nodiscard]] inline const_pointer GetData() const noexcept { return m_data; }
 
-    [[nodiscard]] const value_type& Back() const { return this->operator[](GetSize() - 1); }
-    [[nodiscard]] value_type& Back() { return this->operator[](GetSize() - 1); }
+    [[nodiscard]] inline const value_type& Back() const { return this->operator[](GetSize() - 1); }
+    [[nodiscard]] inline value_type& Back() { return this->operator[](GetSize() - 1); }
 
-    [[nodiscard]] const value_type& Front() const { return this->operator[](0); }
-    [[nodiscard]] value_type& Front() { return this->operator[](0); }
+    [[nodiscard]] inline const value_type& Front() const { return this->operator[](0); }
+    [[nodiscard]] inline value_type& Front() { return this->operator[](0); }
 
     // Note from cppreference: https://en.cppreference.com/w/cpp/container/vector/begin
     // If the vector is empty, the returned (begin) iterator will be equal to end().
@@ -323,22 +364,22 @@ public:
     // Since GrowingVector is implemented on virtual memory and does internal memory reserve in ctor,
     // then m_data is valid ptr even if container is empty.
     // Indicator of emptiness are: Begin() == End() so this is supported in this functionality.
-    [[nodiscard]] iterator Begin() noexcept { return iterator{ m_data }; }
-    [[nodiscard]] const_iterator Begin() const noexcept { return const_iterator{ m_data }; }
-    [[nodiscard]] iterator End() noexcept { return iterator{ m_data + GetSize() }; }
-    [[nodiscard]] const_iterator End() const noexcept { return const_iterator{ m_data + GetSize() }; }
+    [[nodiscard]] inline iterator Begin() noexcept { return iterator{ m_data }; }
+    [[nodiscard]] inline const_iterator Begin() const noexcept { return const_iterator{ m_data }; }
+    [[nodiscard]] inline iterator End() noexcept { return iterator{ m_data + GetSize() }; }
+    [[nodiscard]] inline const_iterator End() const noexcept { return const_iterator{ m_data + GetSize() }; }
 
-    [[nodiscard]] const_iterator CBegin() const noexcept { return const_iterator{ m_data }; }
-    [[nodiscard]] const_iterator CEnd() const noexcept { return const_iterator{ m_data + GetSize() }; }
+    [[nodiscard]] inline const_iterator CBegin() const noexcept { return const_iterator{ m_data }; }
+    [[nodiscard]] inline const_iterator CEnd() const noexcept { return const_iterator{ m_data + GetSize() }; }
 
     // Reverse versions
-    [[nodiscard]] reverse_iterator RBegin() noexcept { return reverse_iterator{ End() }; }
-    [[nodiscard]] const_reverse_iterator RBegin() const noexcept { return const_reverse_iterator{ End() }; }
-    [[nodiscard]] reverse_iterator REnd() noexcept { return reverse_iterator{ Begin() }; }
-    [[nodiscard]] const_reverse_iterator REnd() const noexcept { return const_reverse_iterator{ Begin() }; }
+    [[nodiscard]] inline reverse_iterator RBegin() noexcept { return reverse_iterator{ End() }; }
+    [[nodiscard]] inline const_reverse_iterator RBegin() const noexcept { return const_reverse_iterator{ End() }; }
+    [[nodiscard]] inline reverse_iterator REnd() noexcept { return reverse_iterator{ Begin() }; }
+    [[nodiscard]] inline const_reverse_iterator REnd() const noexcept { return const_reverse_iterator{ Begin() }; }
 
-    [[nodiscard]] const_reverse_iterator CRBegin() const noexcept { return const_reverse_iterator{ End() }; }
-    [[nodiscard]] const_reverse_iterator CREnd() const noexcept { return const_reverse_iterator{ Begin() }; }
+    [[nodiscard]] inline const_reverse_iterator CRBegin() const noexcept { return const_reverse_iterator{ End() }; }
+    [[nodiscard]] inline const_reverse_iterator CREnd() const noexcept { return const_reverse_iterator{ Begin() }; }
 
 
     bool Reserve(size_t elementAmount)
@@ -363,7 +404,7 @@ public:
         return m_data[index];
     }
 
-    value_type& At(size_type index, const value_type& defValue)
+    [[nodiscard]] value_type& At(size_type index, const value_type& defValue)
     {
         if (index >= GetSize())
         {
@@ -373,7 +414,7 @@ public:
         return this->operator[](index);
     }
 
-    const value_type& At(size_type index, const value_type& defValue) const
+    [[nodiscard]] const value_type& At(size_type index, const value_type& defValue) const
     {
         return const_cast<const GrowingVectorVM*>(this)->At(index, defValue);
     }
@@ -545,7 +586,24 @@ private:
 
     bool CommitAdditionalPage()
     {
-        return CommitOverallMemory(GetCommittedBytes() + m_pageSize);
+        return CommitOverallMemory(GetCommittedBytes() + GetPageSize());
+    }
+
+    bool ReleaseMemory()
+    {
+        if (m_data == nullptr)
+        {
+            return true;
+        }
+
+        const bool success = VirtualFree(
+            m_data,                     // Base address of block
+            0,                          // Bytes of committed pages, 0 for MEM_RELEASE, non-zero for DECOMMIT
+            MEM_RELEASE);               // Decommit the pages
+        
+        m_data = nullptr;
+        assert(success);
+        return success;
     }
 
     void ReallocateIfNeed()
@@ -574,8 +632,27 @@ protected:
         explicit DefaultContructTag() = default;
     };
 
-    [[nodiscard]] size_t GetCommittedBytes() const noexcept { return m_committedPages * m_pageSize; }
-    [[nodiscard]] size_t GetReservedBytes() const noexcept { return m_reservedPages * m_pageSize; }
+    [[nodiscard]] inline size_t GetCommittedBytes() const noexcept { return m_committedPages * GetPageSize(); }
+    [[nodiscard]] inline size_t GetReservedBytes() const noexcept { return m_reservedPages * GetPageSize(); }
+
+    [[nodiscard]] size_t CalculatePageSize() const
+    {
+        size_t pageSize = 0;
+        if constexpr (!LargePagesEnabled)
+        {
+            SYSTEM_INFO sSysInfo;                   // Useful information about the system
+            GetSystemInfo(&sSysInfo);               // Initialize the structure.
+
+            pageSize = sSysInfo.dwPageSize;       // Page size on this computer
+        }
+        else
+        {
+            pageSize = GetLargePageMinimum(); // 2MB on my machine 
+        }
+        assert(pageSize % ElementSize == 0); // TODO get rid of this assert (keep it as reminder now)
+
+        return pageSize;
+    }
 
     [[nodiscard]] constexpr static size_t CalculateAlignedMemorySize(size_t bytesToAllocate, size_t alignment) noexcept
     {
@@ -615,7 +692,7 @@ private:
 
     size_t m_committedPages;
     size_t m_reservedPages;
-    size_t m_pageSize;
+    mutable size_t m_pageSize; // mutable is used here to initialize the value in getter after reset
 };
 
 
@@ -628,18 +705,7 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
     , m_committedPages(0)
     , m_reservedPages(0)
 {
-    if constexpr (!LargePagesEnabled)
-    {
-        SYSTEM_INFO sSysInfo;                   // Useful information about the system
-        GetSystemInfo(&sSysInfo);               // Initialize the structure.
-
-        m_pageSize = sSysInfo.dwPageSize;       // Page size on this computer
-    }
-    else
-    {
-        m_pageSize = GetLargePageMinimum(); // 2MB on my machine 
-    }
-    assert(m_pageSize % ElementSize == 0); // TODO get rid of this assert (keep it as reminder now)
+    m_pageSize = CalculatePageSize();
 
     unsigned long long TotalMemoryInBytes = 0;
     if constexpr (std::is_same_v<ReservePolicy, RAMSizePolicyTag>)
@@ -663,7 +729,7 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
         throw std::logic_error("Unallowed Reserve Policy type is used! Use RAMSizePolicyTag, RAMDoubleSizePolicyTag or CustomSizePolicyTag");
     }
 
-    assert(TotalMemoryInBytes % m_pageSize == 0);
+    assert(TotalMemoryInBytes % GetPageSize() == 0);
     if (ReserveBytes(TotalMemoryInBytes) == false)
     {
         throw std::bad_alloc{};
@@ -673,18 +739,14 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
 template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
 inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::~GrowingVectorVM() noexcept
 {
-    const bool bSuccess = VirtualFree(
-        m_data,                     // Base address of block
-        0,                          // Bytes of committed pages, 0 for MEM_RELEASE, non-zero for DECOMMIT
-        MEM_RELEASE);               // Decommit the pages
-    assert(bSuccess);
+    ReleaseMemory();
 }
 
 template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
 inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::ReserveBytes(size_t requestedBytes)
 {
-    const size_t requiredPages = CalculatePageCount(requestedBytes, m_pageSize, m_pageSize);
-    const size_t totalSize = requiredPages * m_pageSize;
+    const size_t requiredPages = CalculatePageCount(requestedBytes, GetPageSize(), GetPageSize());
+    const size_t totalSize = requiredPages * GetPageSize();
 
     DWORD allocationFlags = MEM_RESERVE;
     DWORD protectionFlags = PAGE_NOACCESS;
@@ -738,15 +800,15 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
             return true;
         }
 
-        if (GetCommittedBytes() + m_pageSize > GetReservedBytes())
+        if (GetCommittedBytes() + GetPageSize() > GetReservedBytes())
         {
             // TODO think about attempt to extend it
             return false;
         }
 
         const size_t wantage = bytes - GetCommittedBytes();
-        const size_t requiredPages = CalculatePageCount(wantage, m_pageSize, m_pageSize);
-        const size_t totalMemoryToCommit = requiredPages * m_pageSize;
+        const size_t requiredPages = CalculatePageCount(wantage, GetPageSize(), GetPageSize()); // TODO fix repeated code
+        const size_t totalMemoryToCommit = requiredPages * GetPageSize();
 
         LPVOID lpvBase = VirtualAlloc(
             reinterpret_cast<char*>(m_data) + GetCommittedBytes(),
