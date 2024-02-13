@@ -518,7 +518,7 @@ public:
 
     void Clear() noexcept
     {
-        // Didn't use Resize(0) to not trigger assert(is_default_constructible) in else-constexpr section there (thank you c++)
+        // README Didn't use Resize(0) to not trigger assert(is_default_constructible) in else-constexpr section there (thank you c++)
 
         if (GetSize() == 0)
         {
@@ -579,7 +579,7 @@ public:
     // std::distance is already covered by Iterator::operator-(Iterator)
 
 private:
-    bool ReserveBytes(size_t requestedBytes);
+    bool InitialReserveBytes(size_t requestedBytes);
 
     // TODO test it
     bool CommitOverallMemory(size_t bytes);
@@ -654,6 +654,7 @@ protected:
         return pageSize;
     }
 
+    // TODO carry out these functions to separate helper namespace, no need to be part of templated class
     [[nodiscard]] constexpr static size_t CalculateAlignedMemorySize(size_t bytesToAllocate, size_t alignment) noexcept
     {
         // Calculate the remainder when bytes_to_allocate is divided by alignment
@@ -668,12 +669,25 @@ protected:
     static_assert(CalculateAlignedMemorySize(4096, 4096) == 4096);
     static_assert(CalculateAlignedMemorySize(4097, 4096) == 8192);
 
-    [[nodiscard]] constexpr static size_t CalculatePageCount(size_t bytes, size_t alignment, size_t pageSize)
+    [[nodiscard]] constexpr static size_t CalculateAlignedGrowthInBytes(
+        size_t bytesToAllocate, size_t bytesInUse, size_t pageSize, size_t* outRequiredPages = nullptr) noexcept
+    {
+        const size_t wantage = bytesToAllocate - bytesInUse;
+        const size_t requiredPages = CalculatePageCount(wantage, pageSize);
+        if (outRequiredPages != nullptr)
+        {
+            *outRequiredPages = requiredPages;
+        }
+        const size_t totalMemoryToCommit = requiredPages * pageSize;
+
+        return totalMemoryToCommit;
+    }
+
+    [[nodiscard]] constexpr static size_t CalculatePageCount(size_t bytes, size_t pageSize)
     {
         assert(pageSize != 0);
 
-        const size_t alignedBytes = CalculateAlignedMemorySize(bytes, alignment);
-        assert(alignedBytes % alignment == 0);
+        const size_t alignedBytes = CalculateAlignedMemorySize(bytes, pageSize);
         assert(alignedBytes % pageSize == 0); // TODO reformulate
         return alignedBytes / pageSize;
     }
@@ -682,6 +696,14 @@ protected:
     {
         static_assert(ElementSize != 0);
         return bytes / ElementSize;
+    }
+
+    [[nodiscard]] constexpr size_t CalculateGrowthInternal(size_t requestedBytes, size_t* outRequiredPages = nullptr) const noexcept
+    {
+        const size_t alignedGrowthSize = CalculateAlignedGrowthInBytes(requestedBytes, GetCommittedBytes(), GetPageSize(), outRequiredPages);
+        assert(alignedGrowthSize % GetPageSize() == 0);
+
+        return alignedGrowthSize;
     }
     /////////////////////////////////////////////////////////////////////////////////////////
 
@@ -730,7 +752,7 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
     }
 
     assert(TotalMemoryInBytes % GetPageSize() == 0);
-    if (ReserveBytes(TotalMemoryInBytes) == false)
+    if (InitialReserveBytes(TotalMemoryInBytes) == false)
     {
         throw std::bad_alloc{};
     }
@@ -743,10 +765,10 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
 }
 
 template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::ReserveBytes(size_t requestedBytes)
+inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::InitialReserveBytes(size_t requestedBytes)
 {
-    const size_t requiredPages = CalculatePageCount(requestedBytes, GetPageSize(), GetPageSize());
-    const size_t totalSize = requiredPages * GetPageSize();
+    size_t requiredPages = 0;
+    const size_t alignedGrowthSize = CalculateGrowthInternal(requestedBytes, &requiredPages);
 
     DWORD allocationFlags = MEM_RESERVE;
     DWORD protectionFlags = PAGE_NOACCESS;
@@ -765,7 +787,7 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
     // lpvBase - Base address of the allocated memory
     LPVOID lpvBase = VirtualAlloc(
         nullptr,                    // System selects address
-        totalSize,                  // Size of allocation
+        alignedGrowthSize,          // Size of allocation
         allocationFlags,            // Allocate reserved pages
         protectionFlags);
 
@@ -780,7 +802,7 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
     m_reservedPages = requiredPages;
     m_committedPages = CommitPagesWithReserve ? m_reservedPages : 0;
 
-    std::cout << "GrowingVectorVM preallocated " << totalSize << " bytes of vm for " << GetCapacity() << " objects\n";
+    std::cout << "GrowingVectorVM preallocated " << alignedGrowthSize << " bytes of vm for " << GetCapacity() << " objects\n";
 
     return true;
 }
@@ -806,9 +828,8 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
             return false;
         }
 
-        const size_t wantage = bytes - GetCommittedBytes();
-        const size_t requiredPages = CalculatePageCount(wantage, GetPageSize(), GetPageSize()); // TODO fix repeated code
-        const size_t totalMemoryToCommit = requiredPages * GetPageSize();
+        size_t requiredPages = 0;
+        const size_t totalMemoryToCommit = CalculateGrowthInternal(bytes, &requiredPages);
 
         LPVOID lpvBase = VirtualAlloc(
             reinterpret_cast<char*>(m_data) + GetCommittedBytes(),
