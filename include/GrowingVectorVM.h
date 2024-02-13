@@ -157,7 +157,7 @@ public:
         return *(ptr + index);
     }
 
-protected:
+    // No need to make it a private/protected since it can be accessed via operator ->
     typename Container::pointer ptr;  // Pointer to the current element
 };
 
@@ -274,6 +274,7 @@ public:
 
 // TODO read TLB, TLB miss, physical memory access optimization, 512 times less of page faults and TLB misses
 // TODO natvis for GrowingVector
+// TODO need to analyze places where exceptions can throw
 
 // TODO to support large pages CommitPagesWithReserve option should work
 template<typename T, typename ReservePolicy = RAMSizePolicyTag, bool LargePagesEnabled = false, bool CommitPagesWithReserve = false || LargePagesEnabled>
@@ -364,6 +365,8 @@ public:
     // Since GrowingVector is implemented on virtual memory and does internal memory reserve in ctor,
     // then m_data is valid ptr even if container is empty.
     // Indicator of emptiness are: Begin() == End() so this is supported in this functionality.
+    // TODO It'd make sense to wrap the nullptr for iterators in case if container is empty.
+    // It's easier to debug and much obvious how to resolve.
     [[nodiscard]] inline iterator Begin() noexcept { return iterator{ m_data }; }
     [[nodiscard]] inline const_iterator Begin() const noexcept { return const_iterator{ m_data }; }
     [[nodiscard]] inline iterator End() noexcept { return iterator{ m_data + GetSize() }; }
@@ -429,20 +432,19 @@ public:
         //else
         {
             //new (&m_data[GetSize()]) value_type(value);
-            EmplaceBack(value);
+            EmplaceBackReallocate(value);
         }
     }
 
     void PushBack(const value_type&& value)
     {
-        EmplaceBack(std::move(value));
+        EmplaceBackReallocate(std::move(value));
     }
 
     template<typename... Args>
     void EmplaceBack(Args&&... args)
     {
-        ReallocateIfNeed();
-        EmplaceAtPlace(&m_data[GetSize()], std::forward<Args...>(args)...);
+        EmplaceBackReallocate(std::forward<Args...>(args)...);
     }
 
 
@@ -463,6 +465,35 @@ public:
         return EmplaceAtIndex(index, std::move(value));
     }
 
+    iterator Insert(const_iterator position, const size_type count, const value_type& value)
+    {
+        if (GetCapacity() < GetSize() + count)
+        {
+            // [README] Naive solution, potentially can be rewritten in the future.
+            // Important: count can be bigger than one page can provide, so Reserve is used here
+            if (Reserve(GetSize() + count) == false)
+            {
+                // TODO check if this is ok?
+                throw std::bad_alloc{};
+            }
+        }
+
+        // Ensure the position is within the bounds of the vector
+        assert((position >= CBegin()) && (position <= CEnd()));
+        assert(CBegin().ptr != nullptr);
+
+        const difference_type offset = position - CBegin();
+        iterator nonConstIterator = Begin() + offset; // shouldn't be invalidated since all the elements on the right change
+
+        ShiftElementsToTheRight(nonConstIterator, count);
+
+        std::uninitialized_fill_n(nonConstIterator, count, value);
+
+        m_size += count;
+
+        return nonConstIterator;
+    }
+
     template<typename... Args>
     iterator EmplaceAtIndex(difference_type index, Args&&... args)
     {
@@ -477,15 +508,7 @@ public:
 
         ReallocateIfNeed();
 
-        // Shift elements to the right
-        if constexpr (std::is_move_assignable_v<value_type>)
-        {
-            std::move_backward(Begin() + index, End() - 1, End());
-        }
-        else
-        {
-            std::copy_backward(Begin() + index, End() - 1, End());
-        }
+        ShiftElementsToTheRight(Begin() + index, 1);
 
         EmplaceAtPlace(&m_data[index], std::forward<Args...>(args)...);
 
@@ -621,10 +644,30 @@ private:
     }
 
     template<typename... Args>
+    void EmplaceBackReallocate(Args&&... args)
+    {
+        ReallocateIfNeed();
+        EmplaceAtPlace(&m_data[GetSize()], std::forward<Args...>(args)...);
+    }
+
+    template<typename... Args>
     void EmplaceAtPlace(value_type* destination, Args&&... args)
     {
         new (destination) value_type(std::forward<Args...>(args)...);
         ++m_size;
+    }
+
+    void ShiftElementsToTheRight(iterator position, size_type affectedElementsCount)
+    {
+        assert(position >= Begin() && position < End());
+        if constexpr (std::is_nothrow_move_assignable_v<value_type> || !std::is_copy_assignable_v<value_type>)
+        {
+            std::move_backward(position, Begin() + GetSize(), End() + affectedElementsCount);
+        }
+        else
+        {
+            std::copy_backward(position, Begin() + GetSize(), End() + affectedElementsCount);
+        }
     }
 
 protected:
