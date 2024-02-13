@@ -275,6 +275,8 @@ public:
 // TODO read TLB, TLB miss, physical memory access optimization, 512 times less of page faults and TLB misses
 // TODO natvis for GrowingVector
 // TODO need to analyze places where exceptions can throw
+// Guarantee compatibility with stl, generate, transform algorithms for ex.
+
 
 // TODO to support large pages CommitPagesWithReserve option should work
 template<typename T, typename ReservePolicy = RAMSizePolicyTag, bool LargePagesEnabled = false, bool CommitPagesWithReserve = false || LargePagesEnabled>
@@ -335,7 +337,15 @@ public:
     GrowingVectorVM(const GrowingVectorVM& other) = delete;
     GrowingVectorVM& operator=(const GrowingVectorVM& other) = delete;
     /////////////////////////////////////////////////////////////////////
+    //GrowingVectorVM(const size_type count); // TODO
     //GrowingVectorVM(const size_type count, const value_type& value); // TODO
+    // template<typename InputIt>
+    //GrowingVectorVM(InputIt first, InputIt last); // TODO
+    //GrowingVectorVM(std::initializer_list<T> init); // TODO
+    //GrowingVectorVM& operator=(std::initializer_list<T> ilist);
+
+    // void swap( vector& other ) noexcept(/* see below */);
+    // cmp methods
 
     [[nodiscard]] inline size_type GetSize() const noexcept { return m_size; }
     [[nodiscard]] inline size_type GetCapacity() const noexcept { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
@@ -441,6 +451,11 @@ public:
         EmplaceBackReallocate(std::move(value));
     }
 
+    //void PopBack()
+    //{
+    // TODO impl
+    //}
+
     template<typename... Args>
     void EmplaceBack(Args&&... args)
     {
@@ -539,6 +554,16 @@ public:
         return EmplaceAtIndex(index, std::forward<Args...>(args)...);
     }
 
+    //iterator Erase(const_iterator pos)
+    //{
+
+    //}
+
+    //iterator Erase(const_iterator first, const_iterator last)
+    //{
+
+    //}
+
     void Clear() noexcept
     {
         // README Didn't use Resize(0) to not trigger assert(is_default_constructible) in else-constexpr section there (thank you c++)
@@ -592,14 +617,6 @@ public:
     {
         Resize(newSize, DefaultContructTag{}); // spied on STL
     }
-
-    // TODOs:
-    // IndexOf + Contains
-    // insert(where, count, value)
-    // Erase (by value, index, iterator), first/all
-
-    // compatibility with stl, generate, transform algorithms for ex.
-    // std::distance is already covered by Iterator::operator-(Iterator)
 
 private:
     bool InitialReserveBytes(size_t requestedBytes);
