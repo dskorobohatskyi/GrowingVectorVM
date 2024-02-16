@@ -472,10 +472,11 @@ public:
         EmplaceBackReallocate(std::move(value));
     }
 
-    //void PopBack()
-    //{
-    // TODO impl
-    //}
+    void PopBack()
+    {
+        assert(!Empty());
+        Erase(CEnd() - 1, CEnd());
+    }
 
     template<typename... Args>
     void EmplaceBack(Args&&... args)
@@ -575,15 +576,47 @@ public:
         return EmplaceAtIndex(index, std::forward<Args...>(args)...);
     }
 
-    //iterator Erase(const_iterator pos)
-    //{
+    // DOn't forget about dtor call
+    iterator Erase(const_iterator pos)
+    {
+        // From cppreference: If pos refers to the last element, then the end() iterator is returned.
+        // TODO validate range
+        return Erase(pos, pos + 1);
+    }
 
-    //}
+    iterator Erase(const_iterator first, const_iterator last)
+    {
+        // From cppreference: If last == end() prior to removal, then the updated end() iterator is returned.
+        // If[first, last) is an empty range, then last is returned.
+        assert(false && "Not implemented");
+        assert(first <= last);
+        // TODO validate begin <= first <= last <= end
+        const difference_type removingRangeSize = last - first;
+        if (removingRangeSize == 0)
+        {
+            return last;
+        }
 
-    //iterator Erase(const_iterator first, const_iterator last)
-    //{
+        const bool hasLastElementAffected = last == CEnd();
 
-    //}
+        // Destructing range
+        for (auto it(first); it != last; ++it)
+        {
+            ObjectLifecycleHelper::DestructObject(it->ptr);
+        }
+
+        // test cases
+        // empty range
+        // pop_back (end - 1, end)
+        // front_back(begin, begin + 1)
+        // clear ~ erase (begin, end)  ~ removingRangeSize == size
+        // removingRangeSize > shifting objects count
+        // removingRangeSize < shifting objects count
+
+
+        m_size -= removingRangeSize;
+        // TODO return
+    }
 
     void Clear() noexcept
     {
