@@ -37,6 +37,27 @@ struct is_custom_sizing_policy : std::false_type {};
 template <size_t N>
 struct is_custom_sizing_policy<CustomSizePolicyTag<N>> : std::true_type {};
 
+// TODO make it a namespace or separate decl from implementation in the future
+struct ObjectLifecycleHelper
+{
+    template<typename T, typename... Args>
+    static void ConstructObject(T* destination, Args&&... args)
+    {
+        new (destination) T(std::forward<Args...>(args)...);
+    }
+
+    template <typename T>
+    static void DestructObject(const T* object)
+    {
+        if constexpr (!std::is_trivially_destructible_v<T>) // otherwise we can do nothing, memory deallocation will handle that
+        {
+            if (object)
+            {
+                object->~T();
+            }
+        }
+    }
+};
 
 // TODO analyze what can be constexpr and nodiscard again in the code?
 // TODO validate that iterators are compatible with each other (_Compat method in STL)
@@ -670,7 +691,7 @@ private:
     template<typename... Args>
     void EmplaceAtPlace(value_type* destination, Args&&... args)
     {
-        new (destination) value_type(std::forward<Args...>(args)...);
+        ObjectLifecycleHelper::ConstructObject<value_type>(destination, std::forward<Args...>(args)...);
         ++m_size;
     }
 
