@@ -577,33 +577,19 @@ public:
     }
 
     // DOn't forget about dtor call
-    iterator Erase(const_iterator pos)
+    iterator Erase(const_iterator position)
     {
         // From cppreference: If pos refers to the last element, then the end() iterator is returned.
-        // TODO validate range
-        return Erase(pos, pos + 1);
+        // from me: position must be in range excluding end()
+        assert(position >= CBegin() && position < CEnd());
+        return Erase(position, position + 1);
     }
 
     iterator Erase(const_iterator first, const_iterator last)
     {
         // From cppreference: If last == end() prior to removal, then the updated end() iterator is returned.
         // If[first, last) is an empty range, then last is returned.
-        assert(false && "Not implemented");
-        assert(first <= last);
-        // TODO validate begin <= first <= last <= end
-        const difference_type removingRangeSize = last - first;
-        if (removingRangeSize == 0)
-        {
-            return last;
-        }
 
-        const bool hasLastElementAffected = last == CEnd();
-
-        // Destructing range
-        for (auto it(first); it != last; ++it)
-        {
-            ObjectLifecycleHelper::DestructObject(it->ptr);
-        }
 
         // test cases
         // empty range
@@ -613,9 +599,36 @@ public:
         // removingRangeSize > shifting objects count
         // removingRangeSize < shifting objects count
 
+        assert(first <= last);
+        // TODO validate begin <= first <= last <= end
+        const difference_type removingRangeSize = last - first;
+        if (removingRangeSize == 0)
+        {
+            return iterator{ last.ptr };
+        }
+
+        const bool hasLastElementAffected = last == CEnd();
+
+        // Destructing range
+        for (auto it(first); it != last; ++it)
+        {
+            ObjectLifecycleHelper::DestructObject(it.ptr);
+        }
+
+        const difference_type positionOffset = first - CBegin();
+        // TODO don't like these two separate if-statements below, how to refactor that?
+        if (!hasLastElementAffected)
+        {
+            ShiftElementsToTheLeft(last, removingRangeSize);
+        }
 
         m_size -= removingRangeSize;
-        // TODO return
+
+        if (!hasLastElementAffected)
+        {
+            return Begin() + positionOffset;
+        }
+        return End();
     }
 
     void Clear() noexcept
@@ -728,16 +741,32 @@ private:
         ++m_size;
     }
 
-    void ShiftElementsToTheRight(iterator position, size_type affectedElementsCount)
+    // This method requires pre-allocation done before its execution
+    void ShiftElementsToTheRight(const_iterator position, size_type elementShift)
     {
         assert(position >= Begin() && position < End());
         if constexpr (std::is_nothrow_move_assignable_v<value_type> || !std::is_copy_assignable_v<value_type>)
         {
-            std::move_backward(position, Begin() + GetSize(), End() + affectedElementsCount);
+            std::move_backward(position, CEnd(), End() + elementShift);
         }
         else
         {
-            std::copy_backward(position, Begin() + GetSize(), End() + affectedElementsCount);
+            std::copy_backward(position, CEnd(), End() + elementShift);
+        }
+    }
+
+    // const_iterator as parent class can cover both iterators
+    void ShiftElementsToTheLeft(const_iterator position, size_type elementShift)
+    {
+        assert(position >= Begin() && position < End());
+        auto destination = iterator{ position.ptr } - elementShift;
+        if constexpr (std::is_nothrow_move_assignable_v<value_type> || !std::is_copy_assignable_v<value_type>)
+        {
+            std::move(position, CEnd(), destination);
+        }
+        else
+        {
+            std::copy(position, CEnd(), destination);
         }
     }
 
