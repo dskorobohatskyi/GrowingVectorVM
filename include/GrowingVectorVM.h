@@ -358,12 +358,39 @@ public:
     GrowingVectorVM(const GrowingVectorVM& other) = delete;
     GrowingVectorVM& operator=(const GrowingVectorVM& other) = delete;
     /////////////////////////////////////////////////////////////////////
-    //GrowingVectorVM(const size_type count); // TODO
-    //GrowingVectorVM(const size_type count, const value_type& value); // TODO
-    // template<typename InputIt>
-    //GrowingVectorVM(InputIt first, InputIt last); // TODO
-    //GrowingVectorVM(std::initializer_list<T> init); // TODO
-    //GrowingVectorVM& operator=(std::initializer_list<T> ilist);
+
+    GrowingVectorVM(const size_type count)
+        : GrowingVectorVM() // initial reserve
+    {
+        ConstructN(count);
+    }
+
+    GrowingVectorVM(const size_type count, const value_type& value)
+        : GrowingVectorVM() // initial reserve
+    {
+        ConstructN(count, value);
+    }
+
+    template<typename InputIt, std::enable_if<std::_Is_iterator_v<InputIt>>>
+    GrowingVectorVM(InputIt first, InputIt last)
+        : GrowingVectorVM() // initial reserve
+    {
+        const size_type count = static_cast<size_type>(last - first);
+        ConstructN(count, first, last);
+    }
+
+    GrowingVectorVM(std::initializer_list<T> ilist)
+        : GrowingVectorVM() // initial reserve
+    {
+        ConstructN(ilist.size(), ilist.begin(), ilist.end());
+    }
+
+    GrowingVectorVM& operator=(std::initializer_list<T> ilist)
+    {
+        // Naive implementation but I clearly ok with it now
+        Clear();
+        ConstructN(ilist.size(), ilist.begin(), ilist.end());
+    }
 
     // void swap( vector& other ) noexcept(/* see below */);
     // cmp methods
@@ -733,6 +760,44 @@ private:
     {
         ObjectLifecycleHelper::ConstructObject<value_type>(destination, std::forward<Args...>(args)...);
         ++m_size;
+    }
+
+    template<typename... Args>
+    void ConstructN(size_type count, Args&&... args)
+    {
+        const bool hasReserved = Reserve(count);
+        assert(hasReserved);
+
+        if constexpr (sizeof...(args) == 0) // default-construction
+        {
+            std::uninitialized_default_construct_n(MakeIterator(m_data), count);
+        }
+        else if constexpr (sizeof...(args) == 1) // Initialization with value
+        {
+            std::uninitialized_fill_n(MakeIterator(m_data), count, args...);
+        }
+        else if constexpr (sizeof...(args) == 2) // Initialization with iterators [first, last)
+        {
+            std::uninitialized_copy(std::forward<Args>(args)..., MakeIterator(m_data));
+        }
+        else
+        {
+            assert(false && "Unexpected usage of ConstructN!");
+        }
+
+        m_size += count;
+    }
+
+    // TODO check where else it can be used (where Begin() and End() might return nullptr for ex. as expectation).
+    // Iterator invalidation is also good point to analyze
+    static __forceinline iterator MakeIterator(pointer ptr) noexcept
+    {
+        return iterator{ ptr };
+    }
+
+    static __forceinline const_iterator MakeConstIterator(pointer ptr) noexcept
+    {
+        return const_iterator{ ptr };
     }
 
     // This method requires pre-allocation done before its execution
