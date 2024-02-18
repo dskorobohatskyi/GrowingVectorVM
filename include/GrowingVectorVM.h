@@ -62,6 +62,145 @@ struct ObjectLifecycleHelper
     }
 };
 
+// TODO make it a namespace or separate decl from implementation in the future (ideally should be moved entirely to cpp but will see)
+struct PlatformHelper
+{
+    [[nodiscard]] static size_t CalculateVirtualPageSize(const bool isLargePagesEnabled)
+    {
+        size_t pageSize = 0;
+        if (!isLargePagesEnabled)
+        {
+#if WIN32
+            SYSTEM_INFO sSysInfo;                   // Useful information about the system
+            GetSystemInfo(&sSysInfo);               // Initialize the structure.
+
+            pageSize = sSysInfo.dwPageSize;         // Page size on this computer
+#else
+#error Not implemented
+#endif
+        }
+        else
+        {
+#if WIN32
+            pageSize = GetLargePageMinimum();
+#else
+#error Not implemented
+#endif
+        }
+
+        return pageSize;
+    }
+
+    static void NullifyMemory(void* destination, const size_t size)
+    {
+#if WIN32
+        memset(destination, 0, size);
+#else
+#error Not implemented
+#endif
+    }
+
+    [[nodiscard]] static size_t CalculateInstalledRAM()
+    {
+        unsigned long long TotalMemoryInBytes = 0;
+#if WIN32
+        GetPhysicallyInstalledSystemMemory(&TotalMemoryInBytes);
+        TotalMemoryInBytes *= 1024;
+#else
+#error Not implemented
+#endif
+        return TotalMemoryInBytes;
+    }
+
+    [[nodiscard]] static void* ReserveVirtualMemory(
+        const size_t alignedAllocationSize,
+        const size_t pageSize,
+        void* base = nullptr,
+        const bool shouldCommitWithReserve = false,
+        const bool isLargePagesEnabled = false
+    )
+    {
+        void* memory = nullptr;
+#if WIN32
+        DWORD allocationFlags = MEM_RESERVE;
+        DWORD protectionFlags = PAGE_NOACCESS;
+        if (shouldCommitWithReserve)
+        {
+            allocationFlags |= MEM_COMMIT;
+            protectionFlags = PAGE_READWRITE;
+        }
+
+        // Large-page memory must be reserved and committed as a single operation.
+        // In other words, large pages cannot be used to commit a previously reserved range of memory.
+        if (isLargePagesEnabled)
+        {
+            allocationFlags |= MEM_LARGE_PAGES;
+        }
+        // memory - Base address of the allocated memory
+        memory = VirtualAlloc(
+            base,                           // System selects address
+            alignedAllocationSize,          // Size of allocation
+            allocationFlags,                // Allocate reserved pages
+            protectionFlags);
+#else
+#error Not implemented
+#endif
+        return memory;
+    }
+
+    [[nodiscard]] static void* CommitVirtualMemory(
+        void*& destination,
+        const size_t memorySizeToCommit
+        // TODO probably flags should be customizable also
+    )
+    {
+        void* committedMemory = nullptr;
+#if WIN32
+        committedMemory = VirtualAlloc(
+            destination,
+            memorySizeToCommit,
+            MEM_COMMIT,
+            PAGE_READWRITE);
+#else
+#error Not implemented
+#endif
+        return committedMemory;
+    }
+
+    static bool DecommitVirtualMemory(
+        void*& destination,
+        const size_t memorySizeToDecommit
+    )
+    {
+        bool result = false;
+#if WIN32
+        result = VirtualFree(
+            destination,
+            memorySizeToDecommit,
+            MEM_DECOMMIT);
+#else
+#error Not implemented
+#endif
+        return result;
+    }
+
+    static bool ReleaseVirtualMemory(
+        void* destination
+    )
+    {
+        bool result = false;
+#if WIN32
+        result = VirtualFree(
+            destination,                // Base address of block
+            0,                          // Bytes of committed pages, 0 for MEM_RELEASE, non-zero for DECOMMIT
+            MEM_RELEASE);               // Decommit the pages
+#else
+#error Not implemented
+#endif
+        return result;
+    }
+};
+
 // TODO analyze what can be constexpr and nodiscard again in the code?
 // TODO validate that iterators are compatible with each other (_Compat method in STL)
 // Custom iterator classes
@@ -443,7 +582,7 @@ public:
     {
         if (m_pageSize == 0) [[unlikely]]
         {
-            m_pageSize = CalculatePageSize();
+            m_pageSize = PlatformHelper::CalculateVirtualPageSize(false);
         }
 
         return m_pageSize;
@@ -699,8 +838,7 @@ public:
             return;
         }
 
-        // TODO probably it makes sense to encapsulate memset call in separate function
-        memset(m_data, 0, GetSize() * ElementSize);
+        PlatformHelper::NullifyMemory(m_data, GetSize() * ElementSize);
         m_size = 0;
     }
 
@@ -713,8 +851,7 @@ public:
         }
         else if (newSize < GetSize())
         {
-            void* const erasingDestination = (m_data + newSize);
-            memset(erasingDestination, 0, (GetSize() - newSize) * ElementSize);
+            PlatformHelper::NullifyMemory(m_data + newSize, (GetSize() - newSize) * ElementSize);
             m_size = newSize;
         }
         else // newSize > GetSize()
@@ -762,13 +899,10 @@ private:
             return true;
         }
 
-        const bool success = VirtualFree(
-            m_data,                     // Base address of block
-            0,                          // Bytes of committed pages, 0 for MEM_RELEASE, non-zero for DECOMMIT
-            MEM_RELEASE);               // Decommit the pages
-        
-        m_data = nullptr;
+        const bool success = PlatformHelper::ReleaseVirtualMemory(m_data);
         assert(success);
+        m_data = nullptr;
+
         return success;
     }
 
@@ -870,25 +1004,6 @@ protected:
     [[nodiscard]] inline size_t GetCommittedBytes() const noexcept { return m_committedPages * GetPageSize(); }
     [[nodiscard]] inline size_t GetReservedBytes() const noexcept { return m_reservedPages * GetPageSize(); }
 
-    [[nodiscard]] size_t CalculatePageSize() const
-    {
-        size_t pageSize = 0;
-        if constexpr (!LargePagesEnabled)
-        {
-            SYSTEM_INFO sSysInfo;                   // Useful information about the system
-            GetSystemInfo(&sSysInfo);               // Initialize the structure.
-
-            pageSize = sSysInfo.dwPageSize;       // Page size on this computer
-        }
-        else
-        {
-            pageSize = GetLargePageMinimum(); // 2MB on my machine 
-        }
-        assert(pageSize % ElementSize == 0); // TODO get rid of this assert (keep it as reminder now)
-
-        return pageSize;
-    }
-
     // TODO carry out these functions to separate helper namespace, no need to be part of templated class
     [[nodiscard]] constexpr static size_t CalculateAlignedMemorySize(size_t bytesToAllocate, size_t alignment) noexcept
     {
@@ -923,7 +1038,7 @@ protected:
         assert(pageSize != 0);
 
         const size_t alignedBytes = CalculateAlignedMemorySize(bytes, pageSize);
-        assert(alignedBytes % pageSize == 0); // TODO reformulate
+        assert(alignedBytes % pageSize == 0);
         return alignedBytes / pageSize;
     }
 
@@ -962,7 +1077,7 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
     , m_committedPages(0)
     , m_reservedPages(0)
 {
-    m_pageSize = CalculatePageSize();
+    m_pageSize = PlatformHelper::CalculateVirtualPageSize(false);
 
     unsigned long long TotalMemoryInBytes = 0;
     constexpr size_t GigabyteInBytes = 1024 * 1024 * 1024;
@@ -980,13 +1095,11 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
     }
     else if constexpr (std::is_same_v<ReservePolicy, RAMSizePolicyTag>)
     {
-        GetPhysicallyInstalledSystemMemory(&TotalMemoryInBytes);
-        TotalMemoryInBytes *= 1024;
+        TotalMemoryInBytes = PlatformHelper::CalculateInstalledRAM();
     }
     else if constexpr (std::is_same_v<ReservePolicy, RAMDoubleSizePolicyTag>)
     {
-        GetPhysicallyInstalledSystemMemory(&TotalMemoryInBytes);
-        TotalMemoryInBytes *= (1024 * 2);
+        TotalMemoryInBytes = PlatformHelper::CalculateInstalledRAM() * 2;
     }
     else if constexpr (is_custom_sizing_policy<ReservePolicy>::value)
     {
@@ -1022,34 +1135,21 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
     size_t requiredPages = 0;
     const size_t alignedGrowthSize = CalculateGrowthInternal(requestedBytes, &requiredPages);
 
-    DWORD allocationFlags = MEM_RESERVE;
-    DWORD protectionFlags = PAGE_NOACCESS;
-    if constexpr (CommitPagesWithReserve)
-    {
-        allocationFlags |= MEM_COMMIT;
-        protectionFlags = PAGE_READWRITE;
-    }
+    void* memory = PlatformHelper::ReserveVirtualMemory(
+        alignedGrowthSize,
+        GetPageSize(),
+        nullptr,
+        CommitPagesWithReserve,
+        LargePagesEnabled
+    );
 
-    // Large-page memory must be reserved and committed as a single operation.
-    // In other words, large pages cannot be used to commit a previously reserved range of memory.
-    if constexpr (LargePagesEnabled)
-    {
-        allocationFlags |= MEM_LARGE_PAGES;
-    }
-    // lpvBase - Base address of the allocated memory
-    LPVOID lpvBase = VirtualAlloc(
-        nullptr,                    // System selects address
-        alignedGrowthSize,          // Size of allocation
-        allocationFlags,            // Allocate reserved pages
-        protectionFlags);
-
-    if (lpvBase == nullptr)
+    if (memory == nullptr)
     {
         return false;
     }
 
     // Guiding by Exception Safety Guarantee, let's modify state of the object only if everything goes successfully
-    m_data = reinterpret_cast<pointer>(lpvBase);
+    m_data = reinterpret_cast<pointer>(memory);
 
     m_reservedPages = requiredPages;
     m_committedPages = CommitPagesWithReserve ? m_reservedPages : 0;
@@ -1062,7 +1162,7 @@ inline void GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
 {
     if constexpr (CommitPagesWithReserve)
     {
-        // TODO at first gliance, it should do nothing exactly
+        // TODO at first gliance, it should do nothing exactly, but I didn't check yet
         assert(false && "Not implemented!");
     }
     else
@@ -1082,13 +1182,10 @@ inline void GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
         size_t requiredPages = 0;
         const size_t totalMemoryToCommit = CalculateGrowthInternal(bytes, &requiredPages);
 
-        LPVOID lpvBase = VirtualAlloc(
-            reinterpret_cast<char*>(m_data) + GetCommittedBytes(),
-            totalMemoryToCommit,
-            MEM_COMMIT,
-            PAGE_READWRITE);
+        void* memoryToCommit = reinterpret_cast<char*>(m_data) + GetCommittedBytes();
+        void* committedMemory = PlatformHelper::CommitVirtualMemory(memoryToCommit, totalMemoryToCommit);
 
-        if (lpvBase == nullptr)
+        if (committedMemory == nullptr)
         {
             throw std::bad_alloc();
         }
