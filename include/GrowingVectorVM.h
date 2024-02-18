@@ -14,7 +14,6 @@
 
 #include <stdint.h>
 #include <assert.h>
-#include <iostream>                     // TODO remove this dependency, consider printf as much lightweight analogue
 #include <compare>                      // for operator <=>
 #include <xutility>                     // for std::reverse_iterator
 #include <stdexcept>                    // for std::logic_error
@@ -485,9 +484,10 @@ public:
     [[nodiscard]] inline const_reverse_iterator CREnd() const noexcept { return const_reverse_iterator{ Begin() }; }
 
 
-    bool Reserve(size_t elementAmount)
+    // Note: can throw with bad_alloc if reserve limitation is exceed or allocation was failed
+    void Reserve(const size_t elementAmount)
     {
-        return CommitOverallMemory(elementAmount * ElementSize);
+        CommitOverallMemory(elementAmount * ElementSize);
     }
 
     [[nodiscard]] inline bool Empty() const noexcept { return GetSize() == 0; }
@@ -501,7 +501,7 @@ public:
     {
         if (index >= GetSize())
         {
-            throw std::out_of_range{ "operator[] failed" }; // TODO extend with useful info
+            throw std::out_of_range{ "operator[] failed" };
         }
 
         return m_data[index];
@@ -577,11 +577,7 @@ public:
         {
             // [README] Naive solution, potentially can be rewritten in the future.
             // Important: count can be bigger than one page can provide, so Reserve is used here
-            if (Reserve(GetSize() + count) == false)
-            {
-                // TODO check if this is ok?
-                throw std::bad_alloc{};
-            }
+            Reserve(GetSize() + count);
         }
 
         // Ensure the position is within the bounds of the vector
@@ -751,12 +747,12 @@ public:
 private:
     bool InitialReserveBytes(size_t requestedBytes);
 
-    // TODO test it
-    bool CommitOverallMemory(size_t bytes);
+    // Note: can throw with bad_alloc if reserve limitation is exceed or allocation was failed
+    void CommitOverallMemory(size_t bytes);
 
-    bool CommitAdditionalPage()
+    void CommitAdditionalPage()
     {
-        return CommitOverallMemory(GetCommittedBytes() + GetPageSize());
+        CommitOverallMemory(GetCommittedBytes() + GetPageSize());
     }
 
     bool ReleaseMemory()
@@ -781,11 +777,7 @@ private:
         // TODO validate size in case of unaligned structure
         if (GetSize() >= GetCapacity())
         {
-            if (!CommitAdditionalPage())
-            {
-                // The container couldn't allocate one more virtual page
-                throw std::bad_array_new_length();
-            }
+            CommitAdditionalPage();
             assert(GetSize() < GetCapacity());
         }
     }
@@ -807,8 +799,7 @@ private:
     template<typename... Args>
     void ConstructN(size_type count, Args&&... args)
     {
-        const bool hasReserved = Reserve(count);
-        assert(hasReserved);
+        Reserve(count); // can throw
 
         if constexpr (sizeof...(args) == 0) // default-construction
         {
@@ -1063,30 +1054,29 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
     m_reservedPages = requiredPages;
     m_committedPages = CommitPagesWithReserve ? m_reservedPages : 0;
 
-    std::cout << "GrowingVectorVM preallocated " << alignedGrowthSize << " bytes of vm for " << GetCapacity() << " objects\n";
-
     return true;
 }
 
 template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::CommitOverallMemory(size_t bytes)
+inline void GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::CommitOverallMemory(size_t bytes)
 {
     if constexpr (CommitPagesWithReserve)
     {
-        // TODO handle this properly
-        assert(false);
+        // TODO at first gliance, it should do nothing exactly
+        assert(false && "Not implemented!");
     }
     else
     {
         if (bytes <= GetCommittedBytes())
         {
-            return true;
+            // we already allocated required amount of memory, skip
+            return;
         }
 
         if (GetCommittedBytes() + GetPageSize() > GetReservedBytes())
         {
-            // TODO think about attempt to extend it
-            return false;
+            // No extend mechanism is pre-designed, so that's strict limitation for end user.
+            throw std::bad_alloc();
         }
 
         size_t requiredPages = 0;
@@ -1101,14 +1091,9 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
         if (lpvBase == nullptr)
         {
             throw std::bad_alloc();
-            return false;
         }
 
         m_committedPages += requiredPages;
-
-        // TODO debug output
-
-        return true;
     }
 }
 
