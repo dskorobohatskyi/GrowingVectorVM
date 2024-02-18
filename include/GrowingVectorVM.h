@@ -20,6 +20,10 @@
 #include <stdexcept>                    // for std::logic_error
 #include <memory>                       // for uninitialized_default_construct_n and uninitialized_fill_n (potential candidate to implement on my own)
 
+
+struct _4GBSisePolicyTag {};
+struct _8GBSisePolicyTag {};
+struct _16GBSisePolicyTag {};
 struct RAMSizePolicyTag {};
 struct RAMDoubleSizePolicyTag {};
 
@@ -299,7 +303,38 @@ public:
 // Guarantee compatibility with stl, generate, transform algorithms for ex.
 
 
+// Some examples which helps to understand expected behavior from this type of container
+//{
+//    GrowingVectorVM<int, _4GBSisePolicyTag> vec; // default ctor
+//    assert(vec.GetSize() == 0);
+//    assert(vec.GetCapacity() == 0);
+//    assert(vec.GetReserve() == GB(4) / sizeof(int));
+//}
+//{
+//    GrowingVectorVM<int, _4GBSisePolicyTag> vec({ 1, 2, 3 }); // ctor with initializer_list
+//    assert(vec.GetSize() == 3);
+//    assert(vec.GetCapacity() == vec.GetPageSize() / sizeof(int));
+//    assert(vec.GetReserve() == GB(4) / sizeof(int));
+//
+//    assert(vec[2] == 3);
+//}
+//{
+//    GrowingVectorVM<int, _4GBSisePolicyTag> vec(10, 10); // ctor with count and value
+//    assert(vec.GetSize() == 10);
+//    assert(vec.GetCapacity() == vec.GetPageSize() / sizeof(int));
+//    assert(vec.GetReserve() == GB(4) / sizeof(int));
+//}
+//{
+//    GrowingVectorVM<int, _4GBSisePolicyTag> vec(20); // ctor with default count object
+//    assert(vec.GetSize() == 20);
+//    assert(vec.GetCapacity() == vec.GetPageSize() / sizeof(int));
+//    assert(vec.GetReserve() == GB(4) / sizeof(int));
+//}
+
+
 // TODO to support large pages CommitPagesWithReserve option should work
+// Important: be careful, there is no extending mechanism for Reserve in runtime, so having exception in case of overflow is expected.
+// Choose ReservePolicy carefully and generally consider it as strict limitation.
 template<typename T, typename ReservePolicy = RAMSizePolicyTag, bool LargePagesEnabled = false, bool CommitPagesWithReserve = false || LargePagesEnabled>
 class GrowingVectorVM
 {
@@ -932,7 +967,20 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
     m_pageSize = CalculatePageSize();
 
     unsigned long long TotalMemoryInBytes = 0;
-    if constexpr (std::is_same_v<ReservePolicy, RAMSizePolicyTag>)
+    constexpr size_t GigabyteInBytes = 1024 * 1024 * 1024;
+    if constexpr (std::is_same_v<ReservePolicy, _4GBSisePolicyTag>)
+    {
+        TotalMemoryInBytes = GigabyteInBytes * 4;
+    }
+    else if constexpr (std::is_same_v<ReservePolicy, _8GBSisePolicyTag>)
+    {
+        TotalMemoryInBytes = GigabyteInBytes * 8;
+    }
+    else if constexpr (std::is_same_v<ReservePolicy, _16GBSisePolicyTag>)
+    {
+        TotalMemoryInBytes = GigabyteInBytes * 16;
+    }
+    else if constexpr (std::is_same_v<ReservePolicy, RAMSizePolicyTag>)
     {
         GetPhysicallyInstalledSystemMemory(&TotalMemoryInBytes);
         TotalMemoryInBytes *= 1024;
@@ -953,7 +1001,11 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
         throw std::logic_error("Unallowed Reserve Policy type is used! Use RAMSizePolicyTag, RAMDoubleSizePolicyTag or CustomSizePolicyTag");
     }
 
-    assert(TotalMemoryInBytes % GetPageSize() == 0);
+    if (TotalMemoryInBytes % GetPageSize() != 0)
+    {
+        TotalMemoryInBytes = CalculateAlignedMemorySize(TotalMemoryInBytes, GetPageSize());
+    }
+
     if (InitialReserveBytes(TotalMemoryInBytes) == false)
     {
         throw std::bad_alloc{};
@@ -1041,7 +1093,7 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
 
         if (lpvBase == nullptr)
         {
-            // OUT of MEMORY
+            throw std::bad_alloc();
             return false;
         }
 
