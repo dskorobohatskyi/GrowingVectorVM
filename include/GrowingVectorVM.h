@@ -364,7 +364,7 @@ public:
     ~GrowingVectorVM() noexcept;
 
     // From cppreference: After the move, other is guaranteed to be empty().
-    GrowingVectorVM(const GrowingVectorVM&& other)
+    GrowingVectorVM(GrowingVectorVM&& other)
         : m_data(std::exchange(other.m_data, nullptr))
         , m_size(std::exchange(other.m_size, 0))
         , m_committedPages(std::exchange(other.m_committedPages, 0))
@@ -373,7 +373,7 @@ public:
     {
     }
 
-    GrowingVectorVM& operator=(const GrowingVectorVM&& other)
+    GrowingVectorVM& operator=(GrowingVectorVM&& other)
     {
         if (this != &other)
         {
