@@ -427,8 +427,15 @@ public:
         ConstructN(ilist.size(), ilist.begin(), ilist.end());
     }
 
-    // void swap( vector& other ) noexcept(/* see below */);
-    // cmp methods
+    void Swap(SelfType& other) noexcept
+    {
+        std::swap(m_data, other.m_data);
+        std::swap(m_size, other.m_size);
+        std::swap(m_committedPages, other.m_committedPages);
+        std::swap(m_reservedPages, other.m_reservedPages);
+        std::swap(m_pageSize, other.m_pageSize);
+    }
+    // TODO cmp methods
 
     [[nodiscard]] inline size_type GetSize() const noexcept { return m_size; }
     [[nodiscard]] inline size_type GetCapacity() const noexcept { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
@@ -1122,5 +1129,14 @@ namespace std
         end(GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
     {
         return container.End();
+    }
+
+    template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+    inline void swap(
+        GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
+        GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+    ) noexcept
+    {
+        a.Swap(b);
     }
 }
