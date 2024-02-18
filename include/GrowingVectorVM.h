@@ -576,7 +576,6 @@ public:
         return EmplaceAtIndex(index, std::forward<Args...>(args)...);
     }
 
-    // DOn't forget about dtor call
     iterator Erase(const_iterator position)
     {
         // From cppreference: If pos refers to the last element, then the end() iterator is returned.
@@ -590,7 +589,6 @@ public:
         // From cppreference: If last == end() prior to removal, then the updated end() iterator is returned.
         // If[first, last) is an empty range, then last is returned.
 
-
         // test cases
         // empty range
         // pop_back (end - 1, end)
@@ -599,8 +597,9 @@ public:
         // removingRangeSize > shifting objects count
         // removingRangeSize < shifting objects count
 
+        assert(CBegin() <= first);
         assert(first <= last);
-        // TODO validate begin <= first <= last <= end
+        assert(last <= CEnd());
         const difference_type removingRangeSize = last - first;
         if (removingRangeSize == 0)
         {
@@ -616,7 +615,6 @@ public:
         }
 
         const difference_type positionOffset = first - CBegin();
-        // TODO don't like these two separate if-statements below, how to refactor that?
         if (!hasLastElementAffected)
         {
             ShiftElementsToTheLeft(last, removingRangeSize);
@@ -624,11 +622,7 @@ public:
 
         m_size -= removingRangeSize;
 
-        if (!hasLastElementAffected)
-        {
-            return Begin() + positionOffset;
-        }
-        return End();
+        return Begin() + positionOffset;
     }
 
     void Clear() noexcept
