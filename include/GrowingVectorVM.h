@@ -502,7 +502,7 @@ public:
     ~GrowingVectorVM() noexcept;
 
     // From cppreference: After the move, other is guaranteed to be empty().
-    GrowingVectorVM(GrowingVectorVM&& other)
+    GrowingVectorVM(GrowingVectorVM&& other) noexcept
         : m_data(std::exchange(other.m_data, nullptr))
         , m_size(std::exchange(other.m_size, 0))
         , m_committedPages(std::exchange(other.m_committedPages, 0))
@@ -511,7 +511,7 @@ public:
     {
     }
 
-    GrowingVectorVM& operator=(GrowingVectorVM&& other)
+    GrowingVectorVM& operator=(GrowingVectorVM&& other) noexcept
     {
         if (this != &other)
         {
@@ -563,6 +563,8 @@ public:
         // Naive implementation but I clearly ok with it now
         Clear();
         ConstructN(ilist.size(), ilist.begin(), ilist.end());
+
+        return *this;
     }
 
     void Swap(SelfType& other) noexcept
@@ -576,8 +578,8 @@ public:
     // TODO cmp methods
 
     [[nodiscard]] inline size_type GetSize() const noexcept { return m_size; }
-    [[nodiscard]] inline size_type GetCapacity() const noexcept { return CalculateObjectAmountForNBytes(GetCommittedBytes()); };
-    [[nodiscard]] inline size_type GetReserve() const noexcept { return CalculateObjectAmountForNBytes(GetReservedBytes()); };
+    [[nodiscard]] inline size_type GetCapacity() const noexcept { return CalculateObjectAmountForNBytes(GetCommittedBytes()); }
+    [[nodiscard]] inline size_type GetReserve() const noexcept { return CalculateObjectAmountForNBytes(GetReservedBytes()); }
     [[nodiscard]] size_type GetPageSize() const noexcept
     {
         if (m_pageSize == 0) [[unlikely]]
