@@ -79,35 +79,36 @@ public:
     VectorAdapter& operator=(const VectorAdapter& other) = delete;
     /////////////////////////////////////////////////////////////////////
 
-    VectorAdapter(const size_type count)
+    explicit VectorAdapter(const size_type count)
     {
         _ValidateEmptiness();
-        GetInternalVectorOpt().emplace(InternalVector{ count });
+        GetInternalVectorOpt().emplace(InternalVector(count));
     }
 
     VectorAdapter(const size_type count, const value_type& value)
     {
         _ValidateEmptiness();
-        GetInternalVectorOpt().emplace(InternalVector{ count, value });
+        GetInternalVectorOpt().emplace(InternalVector( count, value ));
     }
 
-    template<typename InputIt, std::enable_if<std::_Is_iterator_v<InputIt>>>
+    template<typename InputIt, std::enable_if_t<std::_Is_iterator_v<InputIt>, int> = 0>
     VectorAdapter(InputIt first, InputIt last)
     {
         _ValidateEmptiness();
-        GetInternalVectorOpt().emplace(InternalVector{ first, last });
+        GetInternalVectorOpt().emplace(InternalVector( first, last ));
     }
 
     VectorAdapter(std::initializer_list<T> ilist)
     {
         _ValidateEmptiness();
 
-        GetInternalVectorOpt().emplace(InternalVector{ ilist });
+        GetInternalVectorOpt().emplace(InternalVector( ilist ));
     }
 
     VectorAdapter& operator=(std::initializer_list<T> ilist)
     {
         GetInternalVectorRef() = ilist;
+        return *this;
     }
 
     void Swap(VectorAdapter& other) noexcept

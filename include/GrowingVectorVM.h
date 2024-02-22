@@ -532,7 +532,7 @@ public:
     GrowingVectorVM& operator=(const GrowingVectorVM& other) = delete;
     /////////////////////////////////////////////////////////////////////
 
-    GrowingVectorVM(const size_type count)
+    explicit GrowingVectorVM(const size_type count)
         : GrowingVectorVM() // initial reserve
     {
         ConstructN(count);
@@ -544,7 +544,7 @@ public:
         ConstructN(count, value);
     }
 
-    template<typename InputIt, std::enable_if<std::_Is_iterator_v<InputIt>>>
+    template<typename InputIt, std::enable_if_t<std::_Is_iterator_v<InputIt>, int> = 0>
     GrowingVectorVM(InputIt first, InputIt last)
         : GrowingVectorVM() // initial reserve
     {
