@@ -173,16 +173,16 @@ TYPED_TEST(VectorTest, VectorQuickAccessGetters)
     {
 #if !NDEBUG
         EXPECT_DEATH({
-            emptyAdapter.Front();
-            emptyAdapter.Back();
+            auto f = emptyAdapter.Front();
+            auto b = emptyAdapter.Back();
             }, ".*");
 #endif
     }
     else
     {
         EXPECT_ANY_THROW({
-            emptyAdapter.Front();
-            emptyAdapter.Back();
+            auto f = emptyAdapter.Front();
+            auto b = emptyAdapter.Back();
         });
     }
 }
@@ -282,7 +282,7 @@ TYPED_TEST(VectorTest, VectorPushPopExtend)
     static_assert(alignof(CustomData) == sizeof(size_t));
     static_assert(!std::is_default_constructible_v<CustomData>);
 
-    constexpr size_t bytes = DS_GB(2);
+    constexpr size_t bytes = DS_MB(512);
     VectorAdapter<CustomData, this->useStd, CustomSizePolicyTag<bytes>> adapter;
 
     constexpr size_t objectAmountLimit = bytes / sizeof(CustomData);
@@ -302,44 +302,257 @@ TYPED_TEST(VectorTest, VectorPushPopExtend)
 
 TYPED_TEST(VectorTest, VectorEmplaces)
 {
-    VectorAdapter<int, this->useStd> adapter;
+    struct TestData {
+        int value;
 
-    ASSERT_TRUE(false);  // TODO
+        // Add any necessary constructors or operations for TestData
+        explicit TestData(int v) : value(v) {} // without explicit
+    };
+
+    VectorAdapter<TestData, this->useStd> adapter;
+
+    {
+        // EmplaceBack elements and check GetSize()
+        EXPECT_EQ(adapter.GetSize(), 0);
+        adapter.EmplaceBack(1);
+        EXPECT_EQ(adapter.GetSize(), 1);
+        adapter.EmplaceBack(2);
+        EXPECT_EQ(adapter.GetSize(), 2);
+        adapter.EmplaceBack(3);
+        EXPECT_EQ(adapter.GetSize(), 3);
+
+        // Check the content of the adapter
+        EXPECT_EQ(adapter.Front().value, 1);
+        EXPECT_EQ(adapter.Back().value, 3);
+    }
+    adapter.Clear();
+
+    {
+        adapter.EmplaceBack(2);
+        adapter.EmplaceBack(3);
+
+        // Test Emplace at iterator position and check GetSize()
+        auto it = adapter.Begin();
+        it = adapter.Emplace(it, 1);
+        EXPECT_EQ(adapter.GetSize(), 3);
+
+        // Check the content of the adapter
+        EXPECT_EQ(adapter.Front().value, 1);
+        EXPECT_EQ(it->value, 1);
+        EXPECT_EQ(adapter.Back().value, 3);
+
+        // Emplace at the end and check GetSize()
+        it = adapter.Emplace(adapter.End(), 4);
+        EXPECT_EQ(adapter.GetSize(), 4);
+
+        // Check the content of the adapter
+        EXPECT_EQ(adapter.Back().value, 4);
+    }
 }
 
 TYPED_TEST(VectorTest, VectorEmplaceWithCapacityChange)
 {
     VectorAdapter<int, this->useStd> adapter;
+    
+    EXPECT_EQ(adapter.GetSize(), 0);
+    EXPECT_EQ(adapter.GetCapacity(), 0);
 
-    ASSERT_TRUE(false);  // TODO
+    const int anchorValue = 100;
+    adapter.EmplaceBack(anchorValue);
+    EXPECT_EQ(adapter.GetSize(), 1);
+    int* validDataPtr = adapter.GetData();
+    EXPECT_TRUE(validDataPtr != nullptr);
+
+    const size_t oldCapacity = adapter.GetCapacity();
+    const size_t objectAmountToFillCapacity = oldCapacity - 1;
+    for (size_t i = 0; i < objectAmountToFillCapacity; i++)
+    {
+        adapter.Emplace(adapter.CBegin(), (int)i); // should shift anchorValue to the right
+        EXPECT_EQ(adapter.Back(), anchorValue);
+    }
+
+    EXPECT_EQ(adapter.GetCapacity(), oldCapacity);
+
+    bool invalidationPresense = validDataPtr != adapter.GetData();
+    EXPECT_FALSE(invalidationPresense); // for both vectors valid
+
+    adapter.Emplace(adapter.CEnd(), -anchorValue);
+    EXPECT_NE(adapter.GetCapacity(), oldCapacity); // capacity changed
+    EXPECT_EQ(adapter.GetSize(), oldCapacity + 1);
+
+    // value checks (does shifting work well)
+    for (size_t i = 0, expected = objectAmountToFillCapacity - 1; i < objectAmountToFillCapacity; i++)
+    {
+        EXPECT_EQ(adapter[i], expected);
+        expected--;
+    }
+    EXPECT_EQ(adapter.Back(), -anchorValue);
+    EXPECT_EQ(*(adapter.CEnd() - 2), anchorValue);
+
+    invalidationPresense = validDataPtr != adapter.GetData();
+    if (this->useStd)
+    {
+        EXPECT_TRUE(invalidationPresense);
+    }
+    else
+    {
+        EXPECT_FALSE(invalidationPresense);
+    }
 }
 
 TYPED_TEST(VectorTest, VectorInserts)
 {
-    VectorAdapter<int, this->useStd> adapter;
+    struct TestData {
+        int value;
 
-    ASSERT_TRUE(false);  // TODO
+        // Add any necessary constructors or operations for TestData
+        explicit TestData(int v) : value(v) {} // without explicit
+    };
+    VectorAdapter<TestData, this->useStd> adapter;
+
+    adapter.EmplaceBack(1);
+    adapter.EmplaceBack(3);
+
+    // Test Insert single element and check size and content
+    auto it = adapter.Insert(adapter.Begin() + 1, TestData(2));
+    EXPECT_EQ(adapter.GetSize(), 3);
+    EXPECT_EQ(adapter.Front().value, 1);
+    EXPECT_EQ((*it).value, 2);
+    EXPECT_EQ(adapter.Back().value, 3);
+
+    // Test Insert multiple elements and check size and content
+    TestData newData(4);
+    adapter.Insert(adapter.Begin(), 2, newData);
+    EXPECT_EQ(adapter.GetSize(), 5);
+    EXPECT_EQ(adapter.Front().value, 4);
+    EXPECT_EQ((adapter.Begin() + 1)->value, 4);
+    EXPECT_EQ((adapter.Begin() + 2)->value, 1);
+    EXPECT_EQ((adapter.Begin() + 3)->value, 2);
+    EXPECT_EQ((adapter.Begin() + 4)->value, 3);
+    EXPECT_EQ(adapter.Back().value, 3);
+
+    // Test Insert at the end
+    adapter.Insert(adapter.End(), TestData(5));
+    EXPECT_EQ(adapter.GetSize(), 6);
+    EXPECT_EQ(adapter.Back().value, 5);
 }
 
 TYPED_TEST(VectorTest, VectorInsertWithCapacityChange)
 {
     VectorAdapter<int, this->useStd> adapter;
 
-    ASSERT_TRUE(false);  // TODO
+    EXPECT_EQ(adapter.GetSize(), 0);
+    EXPECT_EQ(adapter.GetCapacity(), 0);
+
+    const int anchorValue = 100;
+    adapter.EmplaceBack(anchorValue);
+    EXPECT_EQ(adapter.GetSize(), 1);
+    int* validDataPtr = adapter.GetData();
+    EXPECT_TRUE(validDataPtr != nullptr);
+
+    const size_t oldCapacity = adapter.GetCapacity();
+    const size_t objectAmountToFillCapacity = oldCapacity - 1;
+    for (size_t i = 0; i < objectAmountToFillCapacity; i++)
+    {
+        adapter.Insert(adapter.CBegin(), (int)i); // should shift anchorValue to the right
+        EXPECT_EQ(adapter.Back(), anchorValue);
+    }
+
+    EXPECT_EQ(adapter.GetCapacity(), oldCapacity);
+
+    bool invalidationPresense = validDataPtr != adapter.GetData();
+    EXPECT_FALSE(invalidationPresense); // for both vectors valid
+
+    adapter.Insert(adapter.CEnd(), -anchorValue);
+    EXPECT_NE(adapter.GetCapacity(), oldCapacity); // capacity changed
+    EXPECT_EQ(adapter.GetSize(), oldCapacity + 1);
+
+    // value checks (does shifting work well)
+    for (size_t i = 0, expected = objectAmountToFillCapacity - 1; i < objectAmountToFillCapacity; i++)
+    {
+        EXPECT_EQ(adapter[i], expected);
+        expected--;
+    }
+    EXPECT_EQ(adapter.Back(), -anchorValue);
+    EXPECT_EQ(*(adapter.CEnd() - 2), anchorValue);
+
+    invalidationPresense = validDataPtr != adapter.GetData();
+    if (this->useStd)
+    {
+        EXPECT_TRUE(invalidationPresense);
+    }
+    else
+    {
+        EXPECT_FALSE(invalidationPresense);
+    }
+}
+
+TYPED_TEST(VectorTest, VectorInsertCountWithCapacityChange)
+{
+    VectorAdapter<int, this->useStd> adapter;
+    adapter.Insert(adapter.CBegin(), -1);
+    const int fillingValue = 10;
+
+    constexpr int N = 100'000;
+    adapter.Insert(adapter.CEnd(), N, fillingValue);
+    adapter.PushBack(1);
+
+    const int result = std::accumulate(adapter.CBegin(), adapter.CEnd(), 0);
+    const int expectedSum = -1 + N * fillingValue + 1;
+    EXPECT_EQ(result, expectedSum);
+
+    EXPECT_EQ(adapter.Front(), -1);
+    EXPECT_EQ(adapter.Back(), 1);
 }
 
 TYPED_TEST(VectorTest, VectorErase)
 {
-    VectorAdapter<int, this->useStd> adapter;
+    VectorAdapter<int, this->useStd> adapter = { 1, 2, 0, 0, 3, 4, 5, 6, };
+    EXPECT_EQ(adapter.End(), adapter.Begin() + adapter.GetSize());
+    const size_t oldCapacity = adapter.GetCapacity();
+    const size_t oldSize = adapter.GetSize();
 
-    ASSERT_TRUE(false);  // TODO
+    auto startIter = std::find(adapter.Begin(), adapter.End(), 2) + 1;
+    auto endIter = std::find(adapter.Begin(), adapter.End(), 3);
+
+    const size_t expectedRemovingRangeSize = (size_t)std::distance(startIter, endIter);
+
+    auto nextAfterRemovingIter = adapter.Erase(startIter, endIter);
+    auto expectedIterator = std::find(adapter.Begin(), adapter.End(), 3);
+    EXPECT_EQ(nextAfterRemovingIter, expectedIterator);
+
+    EXPECT_EQ(adapter.GetCapacity(), oldCapacity);
+    EXPECT_EQ(adapter.GetSize(), oldSize - expectedRemovingRangeSize);
 }
 
 TYPED_TEST(VectorTest, VectorClear)
 {
     VectorAdapter<int, this->useStd> adapter;
 
-    ASSERT_TRUE(false);  // TODO
+    adapter.EmplaceBack(1);
+    adapter.EmplaceBack(2);
+    adapter.EmplaceBack(3);
+
+    // Save initial capacity
+    const size_t initialCapacity = adapter.GetCapacity();
+
+    // Test Clear and check size and capacity
+    adapter.Clear();
+    EXPECT_EQ(adapter.GetSize(), 0);
+    EXPECT_EQ(adapter.GetCapacity(), initialCapacity);
+
+    // Test Clear on an empty vector
+    adapter.Clear();
+    EXPECT_EQ(adapter.GetSize(), 0);
+    EXPECT_EQ(adapter.GetCapacity(), initialCapacity);
+
+    // Add more elements after clearing
+    adapter.EmplaceBack(4);
+    adapter.EmplaceBack(5);
+
+    // Check size and capacity after adding more elements
+    EXPECT_EQ(adapter.Front(), 4);
+    EXPECT_EQ(adapter.Back(), 5);
 }
 
 TYPED_TEST(VectorTest, VectorResizeWithinCapacity)

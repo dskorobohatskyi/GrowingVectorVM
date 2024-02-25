@@ -469,11 +469,11 @@ public:
     {
         if constexpr (useSTD)
         {
-            return stdVector->emplace_back(std::forward<Args...>(args)...);
+            stdVector->emplace_back(std::forward<Args...>(args)...);
         }
         else
         {
-            return myVector->EmplaceBack(std::forward<Args...>(args)...);
+            myVector->EmplaceBack(std::forward<Args...>(args)...);
         }
     }
 

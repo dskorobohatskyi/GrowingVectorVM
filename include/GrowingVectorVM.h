@@ -765,7 +765,7 @@ public:
             return Begin();
         }
 
-        assert(index >= 0 && index < (difference_type)GetSize());
+        assert(index >= 0);
 
         ReallocateIfNeed();
 
@@ -781,10 +781,10 @@ public:
     iterator Emplace(const_iterator position, Args&&... args)
     {
         // position is ignored if the container is empty
-        if (Empty())
+        if (Empty() || position == CEnd())
         {
             EmplaceBack(std::forward<Args...>(args)...);
-            return Begin();
+            return End() - 1;
         }
 
         // Ensure the position is within the bounds of the vector
@@ -987,10 +987,9 @@ private:
         return const_iterator{ ptr };
     }
 
-    // This method requires pre-allocation done before its execution
+    // This method requires pre-allocation done before its execution. Position validation should be done outside
     void ShiftElementsToTheRight(const_iterator position, size_type elementShift)
     {
-        assert(position >= Begin() && position < End());
         if constexpr (std::is_nothrow_move_assignable_v<value_type> || !std::is_copy_assignable_v<value_type>)
         {
             std::move_backward(position, CEnd(), End() + elementShift);
