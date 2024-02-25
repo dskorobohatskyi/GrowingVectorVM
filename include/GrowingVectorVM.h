@@ -20,6 +20,22 @@
 #include <memory>                       // for uninitialized_default_construct_n and uninitialized_fill_n (potential candidate to implement on my own)
 
 
+
+// TODO wrap and adjust everything to be used via namespace
+//namespace ds
+
+
+#define DS_KB(x) (x) * (size_t)1024
+#define DS_MB(x) (DS_KB(x)) * 1024
+#define DS_GB(x) (DS_MB(x)) * 1024
+
+static_assert(DS_KB(1) == 1024);
+static_assert(DS_KB(4) == 4096);
+static_assert(DS_MB(2) == 1'048'576 * 2);
+static_assert(DS_GB(4) == 4'294'967'296);
+
+
+
 struct _4GBSisePolicyTag {};
 struct _8GBSisePolicyTag {};
 struct _16GBSisePolicyTag {};
@@ -590,8 +606,10 @@ public:
         return m_pageSize;
     }
     
-    [[nodiscard]] inline pointer GetData() noexcept { return m_data; }
-    [[nodiscard]] inline const_pointer GetData() const noexcept { return m_data; }
+    // Data is valid after ctor call, since reservation performed already.
+    // But to have clear expectations on user side, method returns nullptr is container is empty
+    [[nodiscard]] inline pointer GetData() noexcept { return Empty() ? nullptr : m_data; }
+    [[nodiscard]] inline const_pointer GetData() const noexcept { return Empty() ? nullptr : m_data; }
 
     [[nodiscard]] inline const value_type& Back() const { return this->operator[](GetSize() - 1); }
     [[nodiscard]] inline value_type& Back() { return this->operator[](GetSize() - 1); }

@@ -1,21 +1,11 @@
 // GrowingVectorVM.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
+#include "GrowingVectorVM.h"
 #include <iostream>
 #include <vector>
 #include <assert.h>
 
-#include "GrowingVectorVM.h"
-
-
-#define KB(x) (x) * (size_t)1024
-#define MB(x) (KB(x)) * 1024
-#define GB(x) (MB(x)) * 1024
-
-static_assert(KB(1) == 1024);
-static_assert(KB(4) == 4096);
-static_assert(MB(2) == 1'048'576 * 2);
-static_assert(GB(4) == 4'294'967'296);
 
 
 // TODO GoogleBench
@@ -30,10 +20,6 @@ struct alignas(256) MyHugeStruct
 static_assert(alignof(MyHugeStruct) == 256);
 static_assert(sizeof(MyHugeStruct) == 256);
 
-struct alignas(256) MyHugeStructWithoutAlignment
-{
-
-};
 
 struct A
 {
@@ -95,7 +81,7 @@ int main()
 
     //bar.Insert(bar.End() + 1, { 10 });// fails
 
-    constexpr size_t halfRAMHackyValue = GB(16);
+    constexpr size_t halfRAMHackyValue = DS_GB(16);
     GrowingVectorVM<double, CustomSizePolicyTag<halfRAMHackyValue>> vectorInf;
 
     try
@@ -178,8 +164,7 @@ int main()
     //hey.reserve(300'000'000);
     GrowingVectorVM<MyHugeStruct> testMyVector;
     //bool success = testMyVector.Reserve(136'216'567); // OK  - 34,871,443,456 bytes allocated
-    bool success = testMyVector.Reserve(100'000'000); // OK  12'500'000 pages = 51,200,000,000 bytes
-    if (success)
+    testMyVector.Reserve(100'000'000); // OK  12'500'000 pages = 51,200,000,000 bytes
     {
         for (int i = 0; i < testMyVector.GetCapacity(); i++)
         {

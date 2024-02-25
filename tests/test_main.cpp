@@ -2,6 +2,8 @@
 #include <gtest/gtest.h>
 #include "VectorsAdapter.h"
 
+#include <algorithm>
+#include <numeric>      // for std::iota
 
 template <class T>
 class VectorTest : public testing::Test {
@@ -102,74 +104,200 @@ TYPED_TEST(VectorTest, VectorCtorWithIterators)
 }
 
 
-TYPED_TEST(VectorTest, VectorMoveCtor)
+TYPED_TEST(VectorTest, VectorMoveSemantic)
 {
-    VectorAdapter<int, this->useStd> adapter;
+    VectorAdapter<int, this->useStd> adapter(4, 100);
+    ASSERT_EQ(adapter.GetSize(), 4);
 
-    ASSERT_TRUE(false); // TODO
-}
+    VectorAdapter<int, this->useStd> adapter2(std::move(adapter));
+    ASSERT_EQ(adapter.GetSize(), 0);
+    ASSERT_EQ(adapter.Empty(), true);
 
-TYPED_TEST(VectorTest, VectorMoveAssignment)
-{
-    VectorAdapter<int, this->useStd> adapter;
+    adapter = std::move(adapter2); // move operator
+    const auto size = adapter.GetSize();
+    ASSERT_EQ(size, 4);
 
-    ASSERT_TRUE(false);  // TODO
+    ASSERT_EQ(adapter2.Empty(), true);
+    ASSERT_EQ(adapter2.GetData(), nullptr);
 }
 
 TYPED_TEST(VectorTest, VectorSwaping)
 {
-    VectorAdapter<int, this->useStd> adapter;
+    const int initValue = 10;
+    VectorAdapter<int, this->useStd> adapter1(10, initValue);
+    ASSERT_TRUE(adapter1.GetSize() == 10);
+    VectorAdapter<int, this->useStd> adapter2(20);
+    ASSERT_TRUE(adapter2.GetSize() == 20);
 
-    ASSERT_TRUE(false);  // TODO
+    std::swap(adapter1.GetInternalVectorRef(), adapter2.GetInternalVectorRef());
+    ASSERT_TRUE(adapter1.GetSize() == 20);
+    ASSERT_TRUE(adapter2.GetSize() == 10);
+
+    // STD compat check
+    ASSERT_TRUE(std::all_of(adapter2.CBegin(), adapter2.CEnd(), [initValue](const int e)
+        {
+            return e == initValue;
+        }));
 }
 
-TYPED_TEST(VectorTest, VectorCapacityCheck)
-{
-    VectorAdapter<int, this->useStd> adapter;
-
-    ASSERT_TRUE(false);  // TODO
-}
 
 TYPED_TEST(VectorTest, VectorQuickAccessGetters)
 {
     VectorAdapter<int, this->useStd> adapter;
 
-    ASSERT_TRUE(false);  // TODO
+    // Test PushBack, Front, and Back
+    adapter.PushBack(1);
+    EXPECT_EQ(adapter.Front(), 1);
+    EXPECT_EQ(adapter.Back(), 1);
+
+    adapter.PushBack(2);
+    EXPECT_EQ(adapter.Front(), 1);
+    EXPECT_EQ(adapter.Back(), 2);
+
+    adapter.PushBack(3);
+    EXPECT_EQ(adapter.Front(), 1);
+    EXPECT_EQ(adapter.Back(), 3);
+
+    // Modify the adapter and test again
+    adapter.Front() = 0;
+    adapter.Back() = 4;
+
+    EXPECT_EQ(adapter.Front(), 0);
+    EXPECT_EQ(adapter.Back(), 4);
+
+    // Test with an empty adapter
+    VectorAdapter<int, this->useStd> emptyAdapter;
+    // Ensure calling Front() or Back() on an empty adapter doesn't cause undefined behavior
+    EXPECT_EQ(emptyAdapter.GetSize(), 0);
+    if (this->useStd)
+    {
+#if !NDEBUG
+        EXPECT_DEATH({
+            emptyAdapter.Front();
+            emptyAdapter.Back();
+            }, ".*");
+#endif
+    }
+    else
+    {
+        EXPECT_ANY_THROW({
+            emptyAdapter.Front();
+            emptyAdapter.Back();
+        });
+    }
 }
 
 TYPED_TEST(VectorTest, VectorIteratorsCheck)
 {
     VectorAdapter<int, this->useStd> adapter;
 
-    ASSERT_TRUE(false);  // TODO
+    adapter.PushBack(1);
+    adapter.PushBack(2);
+    adapter.PushBack(3);
+
+    // Test forward iterators (Begin, End, CBegin, CEnd)
+    EXPECT_EQ(*adapter.Begin(), 1);
+    EXPECT_EQ(*adapter.CBegin(), 1);
+
+    {
+        auto it = adapter.Begin();
+        ++it;
+        EXPECT_EQ(*it, 2);
+    }
+
+    // Iterate using a range-based for loop
+    int sum = 0;
+    for (const auto& value : adapter.GetInternalVectorRef()) {
+        sum += value;
+    }
+    EXPECT_EQ(sum, 6);
+
+    // Test reverse iterators (RBegin, REnd, CRBegin, CREnd)
+    EXPECT_EQ(*adapter.RBegin(), 3);
+    EXPECT_EQ(*adapter.CRBegin(), 3);
+
+    {
+        auto it = adapter.CREnd();
+        it--;
+        EXPECT_EQ(*it, 1);
+    }
+
+
+    auto rit = adapter.RBegin();
+    ++rit;
+    EXPECT_EQ(*rit, 2);
 }
 
-TYPED_TEST(VectorTest, VectorReserveCheck)
+TYPED_TEST(VectorTest, VectorPushPopCommon)
 {
     VectorAdapter<int, this->useStd> adapter;
 
-    ASSERT_TRUE(false);  // TODO
+#if !NDEBUG
+    EXPECT_DEATH({
+        adapter.PopBack();
+    }, ".*");
+#endif
+
+    EXPECT_EQ(adapter.GetSize(), 0);
+    adapter.PushBack(1);
+    EXPECT_EQ(adapter.GetSize(), 1);
+    adapter.PushBack(2);
+    EXPECT_EQ(adapter.GetSize(), 2);
+    adapter.PushBack(3);
+    EXPECT_EQ(adapter.GetSize(), 3);
+
+    // Check the content of the adapter
+    EXPECT_EQ(adapter.Front(), 1);
+    EXPECT_EQ(adapter.Back(), 3);
+
+    EXPECT_EQ(adapter.GetSize(), 3);
+    adapter.PopBack();
+    EXPECT_EQ(adapter.GetSize(), 2);
+    adapter.PopBack();
+    EXPECT_EQ(adapter.GetSize(), 1);
+    adapter.PopBack();
+    EXPECT_EQ(adapter.GetSize(), 0);
+
+#if !NDEBUG
+    EXPECT_DEATH({
+        adapter.PopBack();
+    }, ".*");
+#endif
 }
 
-TYPED_TEST(VectorTest, VectorReservePolicyCheck)
+TYPED_TEST(VectorTest, VectorPushPopExtend)
 {
-    VectorAdapter<int, this->useStd> adapter;
+    struct CustomData
+    {
+        explicit CustomData(size_t v)
+            : value(v)
+            , flag(false)
+        {
 
-    ASSERT_TRUE(false);  // TODO
-}
+        }
+        size_t value;
+        bool flag;
+    };
+    static_assert(sizeof(CustomData) == 16);
+    static_assert(alignof(CustomData) == sizeof(size_t));
+    static_assert(!std::is_default_constructible_v<CustomData>);
 
-TYPED_TEST(VectorTest, VectorPushBack)
-{
-    VectorAdapter<int, this->useStd> adapter;
+    constexpr size_t bytes = DS_GB(2);
+    VectorAdapter<CustomData, this->useStd, CustomSizePolicyTag<bytes>> adapter;
 
-    ASSERT_TRUE(false);  // TODO
-}
+    constexpr size_t objectAmountLimit = bytes / sizeof(CustomData);
 
-TYPED_TEST(VectorTest, VectorPopBack)
-{
-    VectorAdapter<int, this->useStd> adapter;
+    for (size_t i = 0; i < objectAmountLimit; i++)
+    {
+        adapter.PushBack(CustomData{i});
+    }
 
-    ASSERT_TRUE(false);  // TODO
+    if (!this->useStd)
+    {
+        EXPECT_THROW({
+            adapter.PushBack(CustomData{objectAmountLimit});
+            }, std::bad_alloc);
+    }
 }
 
 TYPED_TEST(VectorTest, VectorEmplaces)
@@ -241,6 +369,96 @@ TYPED_TEST(VectorTest, VectorSTLAlgoCompatibility)
 
     ASSERT_TRUE(false);  // TODO
 }
+
+
+TYPED_TEST(VectorTest, VectorRangeBasedFor)
+{
+    constexpr const size_t elementsAmount = 100;
+    VectorAdapter<int, this->useStd> adapter;
+    adapter.Resize(elementsAmount);
+    std::iota(adapter.Begin(), adapter.End(), 0); // fill vector in progression way with step 1: 0, 1, 2.... 99
+
+    size_t counter = 0;
+    for (const int elem : adapter.GetInternalVectorRef())
+    {
+        ASSERT_EQ(elem, counter++);
+    }
+}
+
+///////////////////////////////////////////////////
+
+TEST(GrowingVectorTest, VectorNativeCtorReserveCheck)
+{
+    {
+        GrowingVectorVM<int, _4GBSisePolicyTag> grVec; // default ctor
+        ASSERT_TRUE(grVec.GetSize() == 0);
+        ASSERT_TRUE(grVec.GetCapacity() == 0);
+        ASSERT_TRUE(grVec.GetReserve() == DS_GB(4) / sizeof(int));
+    }
+    {
+        GrowingVectorVM<double, _4GBSisePolicyTag> grVec({ 1, 2, 3 }); // ctor with initializer_list
+        ASSERT_TRUE(grVec.GetSize() == 3);
+        ASSERT_TRUE(grVec.GetCapacity() == grVec.GetPageSize() / sizeof(double));
+        ASSERT_TRUE(grVec.GetReserve() == DS_GB(4) / sizeof(double));
+
+        ASSERT_TRUE(grVec[2] == 3);
+    }
+    {
+        GrowingVectorVM<char, _16GBSisePolicyTag> grVec(10, 10); // ctor with count and value
+        ASSERT_TRUE(grVec.GetSize() == 10);
+        ASSERT_TRUE(grVec.GetCapacity() == grVec.GetPageSize() / sizeof(char));
+        ASSERT_TRUE(grVec.GetReserve() == DS_GB(16) / sizeof(char));
+    }
+    {
+        struct SomeStruct
+        {
+            int a = 0;
+            size_t size = 0;
+            void* data = nullptr;
+        };
+        static_assert(alignof(SomeStruct) == sizeof(size_t));
+        using CheckingType = SomeStruct;
+
+        // Calculate RAM size
+        const unsigned long long TotalMemoryInBytes = PlatformHelper::CalculateInstalledRAM();
+        GrowingVectorVM<CheckingType, RAMSizePolicyTag> grVec(20); // ctor with default count object
+        ASSERT_TRUE(grVec.GetSize() == 20);
+        ASSERT_TRUE(grVec.GetCapacity() == grVec.GetPageSize() / sizeof(CheckingType));
+        ASSERT_TRUE(grVec.GetReserve() == TotalMemoryInBytes / sizeof(CheckingType));
+    }
+}
+
+TEST(GrowingVectorTest, VectorReservePolicyCheck)
+{
+    {
+        GrowingVectorVM<int, _4GBSisePolicyTag> grVec; // default ctor
+        ASSERT_TRUE(grVec.GetSize() == 0);
+        ASSERT_TRUE(grVec.GetCapacity() == 0);
+        ASSERT_TRUE(grVec.GetReserve() == DS_GB(4) / sizeof(int));
+    }
+    {
+        GrowingVectorVM<int, _8GBSisePolicyTag> grVec({ 1, 2, 3 }); // ctor with initializer_list
+        ASSERT_TRUE(grVec.GetSize() == 3);
+        ASSERT_TRUE(grVec.GetCapacity() == grVec.GetPageSize() / sizeof(int));
+        ASSERT_TRUE(grVec.GetReserve() == DS_GB(8) / sizeof(int));
+
+        ASSERT_TRUE(grVec[2] == 3);
+    }
+    {
+        GrowingVectorVM<int, _4GBSisePolicyTag> grVec(10, 10); // ctor with count and value
+        ASSERT_TRUE(grVec.GetSize() == 10);
+        ASSERT_TRUE(grVec.GetCapacity() == grVec.GetPageSize() / sizeof(int));
+        ASSERT_TRUE(grVec.GetReserve() == DS_GB(4) / sizeof(int));
+    }
+    {
+        GrowingVectorVM<int, _4GBSisePolicyTag> grVec(20); // ctor with default count object
+        ASSERT_TRUE(grVec.GetSize() == 20);
+        ASSERT_TRUE(grVec.GetCapacity() == grVec.GetPageSize() / sizeof(int));
+        ASSERT_TRUE(grVec.GetReserve() == DS_GB(4) / sizeof(int));
+    }
+}
+
+
 
 // access outside the size should fail
 // TODO object memory management checks (ctor, dtor calls)

@@ -4,11 +4,11 @@
 #include <vector>
 #include <optional>
 
-template <typename T, bool useSTD = false>
+template <typename T, bool useSTD = false, typename ReservePolicy = _4GBSisePolicyTag>
 class VectorAdapter {
 public:
     using StdVectorType = std::vector<T>;
-    using CustomVectorType = GrowingVectorVM<T, _4GBSisePolicyTag>;
+    using CustomVectorType = GrowingVectorVM<T, ReservePolicy>;
     using InternalVector = std::conditional_t<useSTD, StdVectorType, CustomVectorType>;
 
     using value_type = T;
