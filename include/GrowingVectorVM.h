@@ -605,7 +605,6 @@ public:
         std::swap(m_reservedPages, other.m_reservedPages);
         std::swap(m_pageSize, other.m_pageSize);
     }
-    // TODO cmp methods
 
     [[nodiscard]] inline size_type GetSize() const noexcept { return m_size; }
     [[nodiscard]] inline size_type GetCapacity() const noexcept { return CalculateObjectAmountForNBytes(GetCommittedBytes()); }
@@ -667,7 +666,7 @@ public:
 
     const value_type& operator[](size_type index) const
     {
-        return const_cast<const GrowingVectorVM*>(this)->operator[](index);
+        return const_cast<GrowingVectorVM*>(this)->operator[](index);
     }
 
     value_type& operator[](size_type index)
@@ -1264,4 +1263,56 @@ namespace std
     {
         a.Swap(b);
     }
+}
+
+// TODO cmp methods for C++17 and less
+template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+auto operator<=>(
+        const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
+        const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+    )
+{
+    // Compare sizes first
+    if (a.GetSize() < b.GetSize())
+    {
+        return std::weak_ordering::less;
+    }
+    else if (a.GetSize() > b.GetSize())
+    {
+        return std::weak_ordering::greater;
+    }
+
+    // Compare each element
+    for (size_t i = 0; i < a.GetSize(); ++i)
+    {
+        if (a[i] < b[i])
+        {
+            return std::weak_ordering::less;
+        }
+        else if (b[i] < a[i])
+        {
+            return std::weak_ordering::greater;
+        }
+    }
+
+    // If sizes and elements are equal, vectors are equivalent
+    return std::weak_ordering::equivalent;
+}
+
+template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+bool operator==(
+    const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
+    const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+    )
+{
+    return (a <=> b) == std::weak_ordering::equivalent;
+}
+
+template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+bool operator!=(
+    const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
+    const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+    )
+{
+    return !(a == b);
 }

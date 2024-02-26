@@ -752,6 +752,51 @@ TYPED_TEST(VectorTest, VectorRangeBasedFor)
     }
 }
 
+
+TYPED_TEST(VectorTest, VectorComparingMethods)
+{
+    VectorAdapter<int, this->useStd> adapter = { 1, 2, 3, 4, 5 };
+    VectorAdapter<int, this->useStd> copy(adapter);
+
+    ASSERT_EQ(adapter, copy);
+}
+
+TYPED_TEST(VectorTest, CompareEqualContainers) {
+    const VectorAdapter<int, this->useStd> a{ 1, 2, 3 };
+    const VectorAdapter<int, this->useStd> b{ 1, 2, 3 };
+
+    EXPECT_FALSE(a != b);
+    EXPECT_TRUE(a == b);
+    EXPECT_FALSE(a < b);
+    EXPECT_TRUE(a <= b);
+    EXPECT_FALSE(a > b);
+    EXPECT_TRUE(a >= b);
+    EXPECT_TRUE(a <=> b != std::weak_ordering::less);
+    EXPECT_TRUE(a <=> b != std::weak_ordering::greater);
+    EXPECT_TRUE(a <=> b == std::weak_ordering::equivalent);
+    EXPECT_TRUE(a <=> b >= 0);
+    EXPECT_TRUE(a <=> b <= 0);
+    EXPECT_TRUE(a <=> b == 0);
+}
+
+TYPED_TEST(VectorTest, CompareNonEqualContainers) {
+    const VectorAdapter<int, this->useStd> a{ 1, 2, 3 };
+    const VectorAdapter<int, this->useStd> c{ 7, 8, 9, 10 };
+
+    EXPECT_TRUE(a != c);
+    EXPECT_FALSE(a == c);
+    EXPECT_TRUE(a < c);
+    EXPECT_TRUE(a <= c);
+    EXPECT_FALSE(a > c);
+    EXPECT_FALSE(a >= c);
+    EXPECT_TRUE(a <=> c == std::weak_ordering::less);
+    EXPECT_TRUE(a <=> c != std::weak_ordering::equivalent);
+    EXPECT_TRUE(a <=> c != std::weak_ordering::greater);
+    EXPECT_TRUE(a <=> c < 0);
+    EXPECT_TRUE(a <=> c != 0);
+    EXPECT_TRUE(a <=> c <= 0);
+}
+
 ///////////////////////////////////////////////////
 
 TEST(GrowingVectorTest, VectorNativeCtorReserveCheck)

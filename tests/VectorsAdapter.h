@@ -96,6 +96,20 @@ public:
         GetInternalVectorRef() = other.GetInternalVectorRef();
         return *this;
     }
+
+    auto operator<=>(const VectorAdapter& other) const
+    {
+        return GetInternalVectorRef() <=> other.GetInternalVectorRef();
+    }
+
+    bool operator==(const VectorAdapter& other) const
+    {
+        return GetInternalVectorRef() == other.GetInternalVectorRef();
+    }
+    bool operator!=(const VectorAdapter& other) const
+    {
+        return GetInternalVectorRef() != other.GetInternalVectorRef();
+    }
     /////////////////////////////////////////////////////////////////////
 
     explicit VectorAdapter(const size_type count)
