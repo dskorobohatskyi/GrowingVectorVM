@@ -631,16 +631,16 @@ TYPED_TEST(VectorTest, Sorting)
 
 TYPED_TEST(VectorTest, MinElement)
 {
-    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
+    const VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
 
-    auto minElement = std::min_element(adapter.Begin(), adapter.End());
+    const auto minElement = std::min_element(adapter.Begin(), adapter.End());
 
     EXPECT_EQ(1, *minElement);
 }
 
 TYPED_TEST(VectorTest, Accumulate)
 {
-    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
+    const VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
 
     const int sum = std::accumulate(adapter.Begin(), adapter.End(), 0);
 
@@ -649,9 +649,9 @@ TYPED_TEST(VectorTest, Accumulate)
 
 TYPED_TEST(VectorTest, AllOf)
 {
-    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, -1, 7, 3, 9, 4, 6 };
+    const VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, -1, 7, 3, 9, 4, 6 };
 
-    bool allPositive = std::all_of(adapter.Begin(), adapter.End(), [](int x) { return x > 0; });
+    const bool allPositive = std::all_of(adapter.Begin(), adapter.End(), [](int x) { return x > 0; });
 
     EXPECT_FALSE(allPositive);
 }
@@ -663,13 +663,8 @@ TYPED_TEST(VectorTest, Transform)
 
     std::transform(adapter.Begin(), adapter.End(), resultVector.Begin(), [](int x) { return x * 2; });
 
-    auto expected(VectorAdapter<int, this->useStd>{10, 4, 16, 2, 14, 6, 18, 8, 12});
-    // TODO uncomment when operator== is overriden
-    //EXPECT_EQ(resultVector, expected);
-    for (size_t i = 0; i < resultVector.GetSize(); i++)
-    {
-        EXPECT_EQ(resultVector[i], expected[i]);
-    }
+    const auto expected(VectorAdapter<int, this->useStd>{10, 4, 16, 2, 14, 6, 18, 8, 12});
+    EXPECT_EQ(resultVector, expected);
 }
 
 TYPED_TEST(VectorTest, Unique)
@@ -680,13 +675,8 @@ TYPED_TEST(VectorTest, Unique)
     auto uniqueEnd = std::unique(adapter.Begin(), adapter.End());
     adapter.Erase(uniqueEnd, adapter.End());
 
-    auto expected(VectorAdapter<int, this->useStd>{1, 2, 3, 4, 5, 6, 7, 8, 9});
-    // TODO uncomment when operator== is overriden
-    //EXPECT_EQ(resultVector, expected);
-    for (size_t i = 0; i < adapter.GetSize(); i++)
-    {
-        EXPECT_EQ(adapter[i], expected[i]);
-    }
+    const auto expected(VectorAdapter<int, this->useStd>{1, 2, 3, 4, 5, 6, 7, 8, 9});
+    EXPECT_EQ(adapter, expected);
 }
 
 TYPED_TEST(VectorTest, Reverse)
@@ -695,27 +685,22 @@ TYPED_TEST(VectorTest, Reverse)
 
     std::reverse(adapter.Begin(), adapter.End());
 
-    auto expected(VectorAdapter<int, this->useStd>{6, 4, 9, 3, 7, 1, 8, 2, 5});
-    // TODO uncomment when operator== is overriden
-    //EXPECT_EQ(adapter, expected);
-    for (size_t i = 0; i < adapter.GetSize(); i++)
-    {
-        EXPECT_EQ(adapter[i], expected[i]);
-    }
+    const auto expected(VectorAdapter<int, this->useStd>{6, 4, 9, 3, 7, 1, 8, 2, 5});
+    EXPECT_EQ(adapter, expected);
 }
 
 TYPED_TEST(VectorTest, Count)
 {
-    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
+    const VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
 
-    const int countOfThrees = std::count(adapter.Begin(), adapter.End(), 3);
+    const int countOfThrees = (int)std::count(adapter.Begin(), adapter.End(), 3);
 
     EXPECT_EQ(countOfThrees, 1);
 }
 
 TYPED_TEST(VectorTest, IsSorted)
 {
-    VectorAdapter<int, this->useStd> adapter = { 1, 2, 3, 4, 5 };
+    const VectorAdapter<int, this->useStd> adapter = { 1, 2, 3, 4, 5 };
 
     const bool isSorted = std::is_sorted(adapter.Begin(), adapter.End());
 
@@ -728,12 +713,7 @@ TYPED_TEST(VectorTest, ForEach)
 
     std::for_each(adapter.Begin(), adapter.End(), [](int& x) { x += 10; });
     auto expected(VectorAdapter<int, this->useStd>{15, 12, 18, 11, 17, 13, 19, 14, 16});
-    // TODO uncomment when operator== is overriden
-    //EXPECT_EQ(adapter, expected);
-    for (size_t i = 0; i < adapter.GetSize(); i++)
-    {
-        EXPECT_EQ(adapter[i], expected[i]);
-    }
+    EXPECT_EQ(adapter, expected);
 }
 //////////////////////////////////////////////////
 
@@ -890,9 +870,8 @@ TEST(GrowingVectorTest, VectorResizeOutsideReserve)
 }
 
 
+// TODO [advanced] object memory management checks (ctor, dtor calls)
 
-// access outside the size should fail
-// TODO object memory management checks (ctor, dtor calls)
 int main(int argc, char** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
