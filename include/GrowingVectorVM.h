@@ -543,9 +543,23 @@ public:
         return *this;
     }
 
-    // Disable copy construction for now, since memory reserve should be done for another vector as well and it will throw without careful setup.
-    GrowingVectorVM(const GrowingVectorVM& other) = delete;
-    GrowingVectorVM& operator=(const GrowingVectorVM& other) = delete;
+    // Be careful that memory reserve should be done for another vector as well and it will throw (with bad alloc) without careful setup.
+    // TODO (optional) resolve this restriction to have exactly the same type (including ReservePolicy). other.Size() and current Reserve policy should be compared
+    GrowingVectorVM(const SelfType& other)
+        : GrowingVectorVM() // initial reserve
+    {
+        ConstructN(other.GetSize(), other.CBegin(), other.CEnd());
+    }
+    GrowingVectorVM& operator=(const SelfType& other)
+    {
+        if (!Empty())
+        {
+            Clear();
+        }
+        ConstructN(other.GetSize(), other.CBegin(), other.CEnd());
+
+        return *this;
+    }
     /////////////////////////////////////////////////////////////////////
 
     explicit GrowingVectorVM(const size_type count)

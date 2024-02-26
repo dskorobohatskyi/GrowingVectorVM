@@ -36,6 +36,18 @@ public:
         }
     }
 
+    const InternalVector& GetInternalVectorRef() const
+    {
+        if constexpr (useSTD)
+        {
+            return stdVector.value();
+        }
+        else
+        {
+            return myVector.value();
+        }
+    }
+
     std::optional<InternalVector>& GetInternalVectorOpt()
     {
         if constexpr (useSTD)
@@ -75,8 +87,15 @@ public:
     }
 
     // Disable copy construction for now, since memory reserve should be done for another vector as well and it will throw without careful setup.
-    VectorAdapter(const VectorAdapter& other) = delete;
-    VectorAdapter& operator=(const VectorAdapter& other) = delete;
+    VectorAdapter(const VectorAdapter& other)
+    {
+        GetInternalVectorOpt() = other.GetInternalVectorRef();
+    }
+    VectorAdapter& operator=(const VectorAdapter& other)
+    {
+        GetInternalVectorRef() = other.GetInternalVectorRef();
+        return *this;
+    }
     /////////////////////////////////////////////////////////////////////
 
     explicit VectorAdapter(const size_type count)
