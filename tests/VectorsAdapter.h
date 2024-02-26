@@ -404,6 +404,16 @@ public:
         return GetInternalVectorRef()[index];
     }
 
+    [[nodiscard]] reference At(size_type index)
+    {
+        return this->operator[](index);
+    }
+
+    [[nodiscard]] const_reference At(size_type index) const
+    {
+        return this->operator[](index);
+    }
+
     [[nodiscard]] value_type& At(size_type index, const value_type& defValue)
     {
         if constexpr (useSTD)

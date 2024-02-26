@@ -559,29 +559,183 @@ TYPED_TEST(VectorTest, VectorResizeWithinCapacity)
 {
     VectorAdapter<int, this->useStd> adapter;
 
-    ASSERT_TRUE(false);  // TODO
+    constexpr size_t reservedCapacity = 1000; // NOTE: for GrowingVector can be differ after Reserve call()
+    adapter.Reserve(reservedCapacity);
+
+    adapter.Resize(10); // default constractible
+    EXPECT_TRUE(std::is_default_constructible_v<int> == true);
+
+    for (size_t i = 0; i < 10; i++)
+    {
+        EXPECT_EQ(adapter.At(i), 0);
+    }
+
+    adapter.Resize(200, 99);
+
+    for (size_t i = 10; i < 200; i++)
+    {
+        EXPECT_EQ(adapter.At(i), 99);
+    }
+
+    const size_t oldCapacity = adapter.GetCapacity();
+    adapter.Resize(reservedCapacity, 100);
+    EXPECT_EQ(adapter.GetCapacity(), oldCapacity);
+
+    for (size_t i = 200; i < reservedCapacity; i++)
+    {
+        EXPECT_EQ(adapter.At(i), 100);
+    }
 }
 
 TYPED_TEST(VectorTest, VectorResizeOutsideCapacity)
 {
     VectorAdapter<int, this->useStd> adapter;
 
-    ASSERT_TRUE(false);  // TODO
+    constexpr size_t reservedCapacity = 10; // NOTE: for GrowingVector can be differ after Reserve call()
+    adapter.Reserve(reservedCapacity);
+    EXPECT_EQ(adapter.GetSize(), 0);
+
+    size_t oldCapacity = adapter.GetCapacity();
+    adapter = { 1, 2, 3 };
+    EXPECT_EQ(adapter.GetCapacity(), oldCapacity);
+
+    adapter.Resize(oldCapacity * 2, 200);
+    EXPECT_NE(adapter.GetCapacity(), oldCapacity);
+
+    EXPECT_EQ(adapter.At(0), 1);
+    EXPECT_EQ(adapter.At(1), 2);
+    EXPECT_EQ(adapter.At(2), 3);
+    for (size_t i = 3; i < oldCapacity * 2; i++)
+    {
+        EXPECT_EQ(adapter.At(i), 200);
+    }
+
+    adapter.Resize(5000, 99);
+
+    EXPECT_EQ(adapter.At(oldCapacity * 2 - 1), 200);
+    EXPECT_EQ(adapter.At(oldCapacity * 2), 99);
+    EXPECT_EQ(adapter.Back(), 99);
 }
 
-TYPED_TEST(VectorTest, VectorResizeOutsideReserve)
+
+//////////////// STL COMPATIBILITY //////////////////////////////////
+
+TYPED_TEST(VectorTest, Sorting)
 {
-    VectorAdapter<int, this->useStd> adapter;
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
 
-    ASSERT_TRUE(false);  // TODO
+    std::sort(adapter.Begin(), adapter.End());
+
+    ASSERT_TRUE(std::is_sorted(adapter.Begin(), adapter.End()));
 }
 
-TYPED_TEST(VectorTest, VectorSTLAlgoCompatibility)
+TYPED_TEST(VectorTest, MinElement)
 {
-    VectorAdapter<int, this->useStd> adapter;
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
 
-    ASSERT_TRUE(false);  // TODO
+    auto minElement = std::min_element(adapter.Begin(), adapter.End());
+
+    EXPECT_EQ(1, *minElement);
 }
+
+TYPED_TEST(VectorTest, Accumulate)
+{
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
+
+    const int sum = std::accumulate(adapter.Begin(), adapter.End(), 0);
+
+    EXPECT_EQ(45, sum);
+}
+
+TYPED_TEST(VectorTest, AllOf)
+{
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, -1, 7, 3, 9, 4, 6 };
+
+    bool allPositive = std::all_of(adapter.Begin(), adapter.End(), [](int x) { return x > 0; });
+
+    EXPECT_FALSE(allPositive);
+}
+
+TYPED_TEST(VectorTest, Transform)
+{
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
+    VectorAdapter<int, this->useStd> resultVector(adapter.GetSize());
+
+    std::transform(adapter.Begin(), adapter.End(), resultVector.Begin(), [](int x) { return x * 2; });
+
+    auto expected(VectorAdapter<int, this->useStd>{10, 4, 16, 2, 14, 6, 18, 8, 12});
+    // TODO uncomment when operator== is overriden
+    //EXPECT_EQ(resultVector, expected);
+    for (size_t i = 0; i < resultVector.GetSize(); i++)
+    {
+        EXPECT_EQ(resultVector[i], expected[i]);
+    }
+}
+
+TYPED_TEST(VectorTest, Unique)
+{
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6, 5, 2, 8 };
+
+    std::sort(adapter.Begin(), adapter.End());
+    auto uniqueEnd = std::unique(adapter.Begin(), adapter.End());
+    adapter.Erase(uniqueEnd, adapter.End());
+
+    auto expected(VectorAdapter<int, this->useStd>{1, 2, 3, 4, 5, 6, 7, 8, 9});
+    // TODO uncomment when operator== is overriden
+    //EXPECT_EQ(resultVector, expected);
+    for (size_t i = 0; i < adapter.GetSize(); i++)
+    {
+        EXPECT_EQ(adapter[i], expected[i]);
+    }
+}
+
+TYPED_TEST(VectorTest, Reverse)
+{
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
+
+    std::reverse(adapter.Begin(), adapter.End());
+
+    auto expected(VectorAdapter<int, this->useStd>{6, 4, 9, 3, 7, 1, 8, 2, 5});
+    // TODO uncomment when operator== is overriden
+    //EXPECT_EQ(adapter, expected);
+    for (size_t i = 0; i < adapter.GetSize(); i++)
+    {
+        EXPECT_EQ(adapter[i], expected[i]);
+    }
+}
+
+TYPED_TEST(VectorTest, Count)
+{
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
+
+    const int countOfThrees = std::count(adapter.Begin(), adapter.End(), 3);
+
+    EXPECT_EQ(countOfThrees, 1);
+}
+
+TYPED_TEST(VectorTest, IsSorted)
+{
+    VectorAdapter<int, this->useStd> adapter = { 1, 2, 3, 4, 5 };
+
+    const bool isSorted = std::is_sorted(adapter.Begin(), adapter.End());
+
+    EXPECT_TRUE(isSorted);
+}
+
+TYPED_TEST(VectorTest, ForEach)
+{
+    VectorAdapter<int, this->useStd> adapter = { 5, 2, 8, 1, 7, 3, 9, 4, 6 };
+
+    std::for_each(adapter.Begin(), adapter.End(), [](int& x) { x += 10; });
+    auto expected(VectorAdapter<int, this->useStd>{15, 12, 18, 11, 17, 13, 19, 14, 16});
+    // TODO uncomment when operator== is overriden
+    //EXPECT_EQ(adapter, expected);
+    for (size_t i = 0; i < adapter.GetSize(); i++)
+    {
+        EXPECT_EQ(adapter[i], expected[i]);
+    }
+}
+//////////////////////////////////////////////////
 
 
 TYPED_TEST(VectorTest, VectorRangeBasedFor)
@@ -669,6 +823,25 @@ TEST(GrowingVectorTest, VectorReservePolicyCheck)
         ASSERT_TRUE(grVec.GetCapacity() == grVec.GetPageSize() / sizeof(int));
         ASSERT_TRUE(grVec.GetReserve() == DS_GB(4) / sizeof(int));
     }
+}
+
+TEST(GrowingVectorTest, VectorResizeOutsideReserve)
+{
+    constexpr size_t bytes = DS_KB(512);
+    GrowingVectorVM<double, CustomSizePolicyTag<bytes>> vec;
+
+    EXPECT_EQ(vec.GetReserve(), bytes / sizeof(double));
+    vec.Resize(vec.GetReserve(), 1.0);
+
+    EXPECT_THROW(
+        {
+            vec.PushBack(0.0);
+        }, std::bad_alloc);
+
+    EXPECT_THROW(
+        {
+            vec.Resize(vec.GetSize() + 1);
+        }, std::bad_alloc);
 }
 
 

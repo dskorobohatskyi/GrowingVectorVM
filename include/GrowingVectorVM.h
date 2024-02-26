@@ -666,7 +666,17 @@ public:
         return m_data[index];
     }
 
-    [[nodiscard]] value_type& At(size_type index, const value_type& defValue)
+    [[nodiscard]] reference At(size_type index)
+    {
+        return this->operator[](index);
+    }
+
+    [[nodiscard]] const_reference At(size_type index) const
+    {
+        return this->operator[](index);
+    }
+
+    [[nodiscard]] reference At(size_type index, const value_type& defValue)
     {
         if (index >= GetSize())
         {
@@ -676,7 +686,7 @@ public:
         return this->operator[](index);
     }
 
-    [[nodiscard]] const value_type& At(size_type index, const value_type& defValue) const
+    [[nodiscard]] const_reference At(size_type index, const value_type& defValue) const
     {
         return const_cast<const GrowingVectorVM*>(this)->At(index, defValue);
     }
