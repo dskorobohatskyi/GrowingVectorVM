@@ -482,7 +482,7 @@ public:
 // Important: be careful, there is no extending mechanism for Reserve in runtime, so having exception in case of overflow is expected.
 // Choose ReservePolicy carefully and generally consider it as strict limitation.
 // TODO natvis for GrowingVector
-template<typename T, typename ReservePolicy = RAMSizePolicyTag, bool LargePagesEnabled = false, bool CommitPagesWithReserve = false || LargePagesEnabled>
+template<typename T, typename ReservePolicy = RAMSizePolicyTag, /*bool LargePagesEnabled = false,*/ bool CommitPagesWithReserve = false/* || LargePagesEnabled*/>
 class GrowingVectorVM
 {
 public:
@@ -498,9 +498,11 @@ public:
     using size_type = size_t;
     using difference_type = ptrdiff_t;
 
-    using SelfType = GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>;
+    using SelfType = GrowingVectorVM<T, ReservePolicy, /*LargePagesEnabled,*/ CommitPagesWithReserve>;
     static constexpr bool IsCommitPagesWithReserveEnabled = CommitPagesWithReserve;
-    static constexpr bool IsLargePagesEnabled = LargePagesEnabled;
+    // TODO LargePagesEnabled wasn't tested at all, so no guarantee that it works as expected in this implementation, so comment it out to not confuse the end user side.
+    // Keep this as good point to extend the functionality.
+    static constexpr bool IsLargePagesEnabled = false;
     using iterator = Iterator<SelfType>;
     using const_iterator = ConstIterator<SelfType>;
 
@@ -1102,8 +1104,8 @@ private:
 
 
 ////////////////// IMPLEMENTATION //////////////////////////////
-template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::GrowingVectorVM()
+template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
+inline GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>::GrowingVectorVM()
     : m_data(nullptr)
     , m_size(0)
     , m_committedPages(0)
@@ -1155,14 +1157,14 @@ inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReser
     }
 }
 
-template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::~GrowingVectorVM() noexcept
+template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
+inline GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>::~GrowingVectorVM() noexcept
 {
     ReleaseMemory();
 }
 
-template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::InitialReserveBytes(const size_t requestedBytes)
+template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
+inline bool GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>::InitialReserveBytes(const size_t requestedBytes)
 {
     size_t requiredPages = 0;
     const size_t alignedGrowthSize = CalculateGrowthInternal(requestedBytes, &requiredPages);
@@ -1172,7 +1174,7 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
         GetPageSize(),
         nullptr,
         CommitPagesWithReserve,
-        LargePagesEnabled
+        IsLargePagesEnabled
     );
 
     if (memory == nullptr)
@@ -1189,8 +1191,8 @@ inline bool GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
     return true;
 }
 
-template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-inline void GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::CommitOverallMemory(const size_t bytes)
+template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
+inline void GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>::CommitOverallMemory(const size_t bytes)
 {
     if (bytes > GetReservedBytes())
     {
@@ -1230,24 +1232,24 @@ inline void GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
 namespace std
 {
     // begin and end implementations - for compatibility with range-based for
-    template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-    inline ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled,CommitPagesWithReserve>::iterator
-        begin(ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
+    template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
+    inline ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>::iterator
+        begin(ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& container)
     {
         return container.Begin();
     }
 
-    template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-    inline ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::iterator
-        end(ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
+    template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
+    inline ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>::iterator
+        end(ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& container)
     {
         return container.End();
     }
 
-    template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+    template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
     inline void swap(
-        ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
-        ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+        ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& a,
+        ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& b
     ) noexcept
     {
         a.Swap(b);
@@ -1255,10 +1257,10 @@ namespace std
 }
 
 // TODO cmp methods for C++17 and less
-template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
 auto operator<=>(
-        const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
-        const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+        const ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& a,
+        const ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& b
     )
 {
     // Compare sizes first
@@ -1288,19 +1290,19 @@ auto operator<=>(
     return std::weak_ordering::equivalent;
 }
 
-template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
 bool operator==(
-    const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
-    const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+    const ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& a,
+    const ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& b
     )
 {
     return (a <=> b) == std::weak_ordering::equivalent;
 }
 
-template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
+template<typename T, typename ReservePolicy, bool CommitPagesWithReserve>
 bool operator!=(
-    const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
-    const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+    const ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& a,
+    const ds::GrowingVectorVM<T, ReservePolicy, CommitPagesWithReserve>& b
     )
 {
     return !(a == b);

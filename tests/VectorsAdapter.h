@@ -8,7 +8,7 @@ template <typename T, bool useSTD = false, typename ReservePolicy = ds::_4GBSise
 class VectorAdapter {
 public:
     using StdVectorType = std::vector<T>;
-    using CustomVectorType = ds::GrowingVectorVM<T, ReservePolicy, false, IsCommitWithReserve>;
+    using CustomVectorType = ds::GrowingVectorVM<T, ReservePolicy, IsCommitWithReserve>;
     using InternalVector = std::conditional_t<useSTD, StdVectorType, CustomVectorType>;
 
     using value_type = T;
