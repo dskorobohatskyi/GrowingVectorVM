@@ -355,11 +355,21 @@ TYPED_TEST(VectorTest, VectorEmplaceWithCapacityChange)
     VectorAdapter<int, this->useStd> adapter;
     
     EXPECT_EQ(adapter.GetSize(), 0);
-    EXPECT_EQ(adapter.GetCapacity(), 0);
+    if constexpr (this->useStd || !VectorAdapter<int, false>::CustomVectorType::IsCommitPagesWithReserveEnabled)
+    {
+        EXPECT_EQ(adapter.GetCapacity(), 0);
+    }
 
     const int anchorValue = 100;
     adapter.EmplaceBack(anchorValue);
     EXPECT_EQ(adapter.GetSize(), 1);
+
+    if constexpr (!this->useStd && VectorAdapter<int, false>::CustomVectorType::IsCommitPagesWithReserveEnabled)
+    {
+        // Tests below significantly drop down the performance and require to emplace objects to get capacity filled, so skip
+        return;
+    }
+
     int* validDataPtr = adapter.GetData();
     EXPECT_TRUE(validDataPtr != nullptr);
 
@@ -440,6 +450,11 @@ TYPED_TEST(VectorTest, VectorInserts)
 TYPED_TEST(VectorTest, VectorInsertWithCapacityChange)
 {
     VectorAdapter<int, this->useStd> adapter;
+
+    if constexpr (!this->useStd && VectorAdapter<int, false>::CustomVectorType::IsCommitPagesWithReserveEnabled)
+    {
+        return;
+    }
 
     EXPECT_EQ(adapter.GetSize(), 0);
     EXPECT_EQ(adapter.GetCapacity(), 0);
@@ -601,6 +616,11 @@ TYPED_TEST(VectorTest, VectorResizeWithinCapacity)
 TYPED_TEST(VectorTest, VectorResizeOutsideCapacity)
 {
     VectorAdapter<int, this->useStd> adapter;
+
+    if constexpr (!this->useStd && VectorAdapter<int, false>::CustomVectorType::IsCommitPagesWithReserveEnabled)
+    {
+        return;
+    }
 
     constexpr size_t reservedCapacity = 10; // NOTE: for GrowingVector can be differ after Reserve call()
     adapter.Reserve(reservedCapacity);

@@ -4,11 +4,11 @@
 #include <vector>
 #include <optional>
 
-template <typename T, bool useSTD = false, typename ReservePolicy = ds::_4GBSisePolicyTag>
+template <typename T, bool useSTD = false, typename ReservePolicy = ds::_4GBSisePolicyTag, bool IsCommitWithReserve = false>
 class VectorAdapter {
 public:
     using StdVectorType = std::vector<T>;
-    using CustomVectorType = ds::GrowingVectorVM<T, ReservePolicy>;
+    using CustomVectorType = ds::GrowingVectorVM<T, ReservePolicy, false, IsCommitWithReserve>;
     using InternalVector = std::conditional_t<useSTD, StdVectorType, CustomVectorType>;
 
     using value_type = T;
