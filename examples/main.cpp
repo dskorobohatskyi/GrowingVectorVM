@@ -43,6 +43,7 @@ struct B
 static_assert(sizeof(B) == 8);
 static_assert(alignof(B) == 4);
 
+using namespace ds; // not good practice in general, but that's examples
 
 int main()
 {

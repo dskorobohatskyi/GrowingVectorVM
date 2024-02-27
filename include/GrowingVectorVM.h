@@ -15,14 +15,10 @@
 #include <stdint.h>
 #include <assert.h>
 #include <compare>                      // for operator <=>
-#include <xutility>                     // for std::reverse_iterator
+#include <utility>                     // for std::reverse_iterator
 #include <stdexcept>                    // for std::logic_error
 #include <memory>                       // for uninitialized_default_construct_n and uninitialized_fill_n (potential candidate to implement on my own)
 
-
-
-// TODO wrap and adjust everything to be used via namespace
-//namespace ds
 
 
 #define DS_KB(x) (x) * (size_t)1024
@@ -34,27 +30,6 @@ static_assert(DS_KB(4) == 4096);
 static_assert(DS_MB(2) == 1'048'576 * 2);
 static_assert(DS_GB(4) == 4'294'967'296);
 
-
-
-struct _4GBSisePolicyTag {};
-struct _8GBSisePolicyTag {};
-struct _16GBSisePolicyTag {};
-struct RAMSizePolicyTag {};
-struct RAMDoubleSizePolicyTag {};
-
-template <size_t N>
-struct CustomSizePolicyTag
-{
-    constexpr static size_t size = N;
-};
-
-
-// Helper trait to check if a type has a 'size' member
-template <typename T>
-struct is_custom_sizing_policy : std::false_type {};
-
-template <size_t N>
-struct is_custom_sizing_policy<CustomSizePolicyTag<N>> : std::true_type {};
 
 // TODO make it a namespace or separate decl from implementation in the future
 struct ObjectLifecycleHelper
@@ -217,6 +192,30 @@ struct PlatformHelper
     }
 };
 
+
+namespace ds
+{
+
+struct _4GBSisePolicyTag {};
+struct _8GBSisePolicyTag {};
+struct _16GBSisePolicyTag {};
+struct RAMSizePolicyTag {};
+struct RAMDoubleSizePolicyTag {};
+
+template <size_t N>
+struct CustomSizePolicyTag
+{
+    constexpr static size_t size = N;
+};
+
+
+// Helper trait to check if a type has a 'size' member
+template <typename T>
+struct is_custom_sizing_policy : std::false_type {};
+
+template <size_t N>
+struct is_custom_sizing_policy<CustomSizePolicyTag<N>> : std::true_type {};
+
 // TODO analyze what can be constexpr and nodiscard again in the code?
 // TODO validate that iterators are compatible with each other (_Compat method in STL)
 // Custom iterator classes
@@ -324,7 +323,7 @@ public:
     {
         return ptr <=> other.ptr;
     }
-    // else < c++20
+    // else if std < c++20
     //bool operator!=(const ConstIterator& other) const noexcept
     //{
     //    return ptr != other.ptr;
@@ -451,12 +450,6 @@ public:
 
 
 
-// TODO read TLB, TLB miss, physical memory access optimization, 512 times less of page faults and TLB misses
-// TODO natvis for GrowingVector
-// TODO need to analyze places where exceptions can throw
-// Guarantee compatibility with stl, generate, transform algorithms for ex.
-
-
 // Some examples which helps to understand expected behavior from this type of container
 //{
 //    GrowingVectorVM<int, _4GBSisePolicyTag> vec; // default ctor
@@ -486,9 +479,10 @@ public:
 //}
 
 
-// TODO to support large pages CommitPagesWithReserve option should work
 // Important: be careful, there is no extending mechanism for Reserve in runtime, so having exception in case of overflow is expected.
 // Choose ReservePolicy carefully and generally consider it as strict limitation.
+// TODO to support large pages CommitPagesWithReserve option should work (need to check)
+// TODO natvis for GrowingVector
 template<typename T, typename ReservePolicy = RAMSizePolicyTag, bool LargePagesEnabled = false, bool CommitPagesWithReserve = false || LargePagesEnabled>
 class GrowingVectorVM
 {
@@ -638,13 +632,13 @@ public:
     // Indicator of emptiness are: Begin() == End() so this is supported in this functionality.
     // TODO It'd make sense to wrap the nullptr for iterators in case if container is empty.
     // It's easier to debug and much obvious how to resolve.
-    [[nodiscard]] inline iterator Begin() noexcept { return iterator{ m_data }; }
-    [[nodiscard]] inline const_iterator Begin() const noexcept { return const_iterator{ m_data }; }
-    [[nodiscard]] inline iterator End() noexcept { return iterator{ m_data + GetSize() }; }
-    [[nodiscard]] inline const_iterator End() const noexcept { return const_iterator{ m_data + GetSize() }; }
+    [[nodiscard]] inline iterator Begin() noexcept { return MakeNonConstIterator( m_data ); }
+    [[nodiscard]] inline const_iterator Begin() const noexcept { return MakeConstIterator( m_data ); }
+    [[nodiscard]] inline iterator End() noexcept { return MakeNonConstIterator( m_data + GetSize() ); }
+    [[nodiscard]] inline const_iterator End() const noexcept { return MakeConstIterator( m_data + GetSize() ); }
 
-    [[nodiscard]] inline const_iterator CBegin() const noexcept { return const_iterator{ m_data }; }
-    [[nodiscard]] inline const_iterator CEnd() const noexcept { return const_iterator{ m_data + GetSize() }; }
+    [[nodiscard]] inline const_iterator CBegin() const noexcept { return MakeConstIterator( m_data ); }
+    [[nodiscard]] inline const_iterator CEnd() const noexcept { return MakeConstIterator( m_data + GetSize() ); }
 
     // Reverse versions
     [[nodiscard]] inline reverse_iterator RBegin() noexcept { return reverse_iterator{ End() }; }
@@ -767,15 +761,15 @@ public:
         assert(CBegin().ptr != nullptr);
 
         const difference_type offset = position - CBegin();
-        iterator nonConstIterator = Begin() + offset; // shouldn't be invalidated since all the elements on the right change
+        iterator nonConstPosition = MakeNonConstIterator(Begin() + offset); // shouldn't be invalidated since all the elements on the right change
 
-        ShiftElementsToTheRight(nonConstIterator, count);
+        ShiftElementsToTheRight(nonConstPosition, count);
 
-        std::uninitialized_fill_n(nonConstIterator, count, value);
+        std::uninitialized_fill_n(nonConstPosition, count, value);
 
         m_size += count;
 
-        return nonConstIterator;
+        return nonConstPosition;
     }
 
     template<typename... Args>
@@ -836,21 +830,13 @@ public:
         // From cppreference: If last == end() prior to removal, then the updated end() iterator is returned.
         // If[first, last) is an empty range, then last is returned.
 
-        // test cases
-        // empty range
-        // pop_back (end - 1, end)
-        // front_back(begin, begin + 1)
-        // clear ~ erase (begin, end)  ~ removingRangeSize == size
-        // removingRangeSize > shifting objects count
-        // removingRangeSize < shifting objects count
-
         assert(CBegin() <= first);
         assert(first <= last);
         assert(last <= CEnd());
         const difference_type removingRangeSize = last - first;
         if (removingRangeSize == 0)
         {
-            return iterator{ last.ptr };
+            return MakeNonConstIterator(last);
         }
 
         const bool hasLastElementAffected = last == CEnd();
@@ -980,15 +966,15 @@ private:
 
         if constexpr (sizeof...(args) == 0) // default-construction
         {
-            std::uninitialized_default_construct_n(MakeIterator(m_data), count);
+            std::uninitialized_default_construct_n(MakeNonConstIterator(m_data), count);
         }
         else if constexpr (sizeof...(args) == 1) // Initialization with value
         {
-            std::uninitialized_fill_n(MakeIterator(m_data), count, args...);
+            std::uninitialized_fill_n(MakeNonConstIterator(m_data), count, args...);
         }
         else if constexpr (sizeof...(args) == 2) // Initialization with iterators [first, last)
         {
-            std::uninitialized_copy(std::forward<Args>(args)..., MakeIterator(m_data));
+            std::uninitialized_copy(std::forward<Args>(args)..., MakeNonConstIterator(m_data));
         }
         else
         {
@@ -998,11 +984,14 @@ private:
         m_size += count;
     }
 
-    // TODO check where else it can be used (where Begin() and End() might return nullptr for ex. as expectation).
-    // Iterator invalidation is also good point to analyze
-    static __forceinline iterator MakeIterator(pointer ptr) noexcept
+    static __forceinline iterator MakeNonConstIterator(pointer ptr) noexcept
     {
         return iterator{ ptr };
+    }
+
+    static __forceinline iterator MakeNonConstIterator(const_iterator it) noexcept
+    {
+        return iterator{ it.ptr };
     }
 
     static __forceinline const_iterator MakeConstIterator(pointer ptr) noexcept
@@ -1027,7 +1016,7 @@ private:
     void ShiftElementsToTheLeft(const_iterator position, size_type elementShift)
     {
         assert(position >= Begin() && position < End());
-        auto destination = iterator{ position.ptr } - elementShift;
+        auto destination = MakeNonConstIterator(position) - elementShift;
         if constexpr (std::is_nothrow_move_assignable_v<value_type> || !std::is_copy_assignable_v<value_type>)
         {
             std::move(position, CEnd(), destination);
@@ -1236,29 +1225,30 @@ inline void GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWith
     }
 }
 
+} // namespace ds end
 
 
 namespace std
 {
     // begin and end implementations - for compatibility with range-based for
     template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-    inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled,CommitPagesWithReserve>::iterator
-        begin(GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
+    inline ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled,CommitPagesWithReserve>::iterator
+        begin(ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
     {
         return container.Begin();
     }
 
     template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
-    inline GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::iterator
-        end(GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
+    inline ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>::iterator
+        end(ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& container)
     {
         return container.End();
     }
 
     template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
     inline void swap(
-        GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
-        GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+        ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
+        ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
     ) noexcept
     {
         a.Swap(b);
@@ -1268,8 +1258,8 @@ namespace std
 // TODO cmp methods for C++17 and less
 template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
 auto operator<=>(
-        const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
-        const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+        const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
+        const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
     )
 {
     // Compare sizes first
@@ -1301,8 +1291,8 @@ auto operator<=>(
 
 template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
 bool operator==(
-    const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
-    const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+    const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
+    const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
     )
 {
     return (a <=> b) == std::weak_ordering::equivalent;
@@ -1310,8 +1300,8 @@ bool operator==(
 
 template<typename T, typename ReservePolicy, bool LargePagesEnabled, bool CommitPagesWithReserve>
 bool operator!=(
-    const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
-    const GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
+    const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& a,
+    const ds::GrowingVectorVM<T, ReservePolicy, LargePagesEnabled, CommitPagesWithReserve>& b
     )
 {
     return !(a == b);

@@ -283,7 +283,7 @@ TYPED_TEST(VectorTest, VectorPushPopExtend)
     static_assert(!std::is_default_constructible_v<CustomData>);
 
     constexpr size_t bytes = DS_MB(512);
-    VectorAdapter<CustomData, this->useStd, CustomSizePolicyTag<bytes>> adapter;
+    VectorAdapter<CustomData, this->useStd, ds::CustomSizePolicyTag<bytes>> adapter;
 
     constexpr size_t objectAmountLimit = bytes / sizeof(CustomData);
 
@@ -523,6 +523,17 @@ TYPED_TEST(VectorTest, VectorErase)
 
     EXPECT_EQ(adapter.GetCapacity(), oldCapacity);
     EXPECT_EQ(adapter.GetSize(), oldSize - expectedRemovingRangeSize);
+
+    // empty range check
+    auto shouldBeSecondIterator = adapter.Erase(expectedIterator, expectedIterator);
+    EXPECT_EQ(shouldBeSecondIterator, expectedIterator);
+    EXPECT_EQ(adapter.GetSize(), oldSize - expectedRemovingRangeSize); // didn't changed
+    
+    // Clear simulation
+    auto shouldBeEndIterator = adapter.Erase(adapter.CBegin(), adapter.CEnd());
+    EXPECT_EQ(shouldBeEndIterator, adapter.CEnd());
+    EXPECT_EQ(adapter.GetSize(), 0); // empty
+    EXPECT_TRUE(adapter.Empty());
 }
 
 TYPED_TEST(VectorTest, VectorClear)
@@ -781,6 +792,10 @@ TYPED_TEST(VectorTest, CompareNonEqualContainers) {
 
 TEST(GrowingVectorTest, VectorNativeCtorReserveCheck)
 {
+    using ds::GrowingVectorVM;
+    using ds::_4GBSisePolicyTag;
+    using ds::_16GBSisePolicyTag;
+    using ds::RAMSizePolicyTag;
     {
         GrowingVectorVM<int, _4GBSisePolicyTag> grVec; // default ctor
         ASSERT_TRUE(grVec.GetSize() == 0);
@@ -822,6 +837,9 @@ TEST(GrowingVectorTest, VectorNativeCtorReserveCheck)
 
 TEST(GrowingVectorTest, VectorReservePolicyCheck)
 {
+    using ds::GrowingVectorVM;
+    using ds::_4GBSisePolicyTag;
+    using ds::_8GBSisePolicyTag;
     {
         GrowingVectorVM<int, _4GBSisePolicyTag> grVec; // default ctor
         ASSERT_TRUE(grVec.GetSize() == 0);
@@ -853,7 +871,7 @@ TEST(GrowingVectorTest, VectorReservePolicyCheck)
 TEST(GrowingVectorTest, VectorResizeOutsideReserve)
 {
     constexpr size_t bytes = DS_KB(512);
-    GrowingVectorVM<double, CustomSizePolicyTag<bytes>> vec;
+    ds::GrowingVectorVM<double, ds::CustomSizePolicyTag<bytes>> vec;
 
     EXPECT_EQ(vec.GetReserve(), bytes / sizeof(double));
     vec.Resize(vec.GetReserve(), 1.0);
