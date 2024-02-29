@@ -6,3 +6,9 @@ target_link_libraries(Examples PRIVATE GrowingVectorVM) # why not PUBLIC?
 set_target_properties(Examples PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/build/examples"
 )
+
+if (BUILD_SHARED_LIBS)
+    add_custom_command(TARGET Examples PRE_BUILD
+        COMMAND copy "$(SolutionDir)growingvectorvm\\$(Configuration)\\GrowingVectorVM.dll" "$(TargetDir)"
+    )
+endif()
