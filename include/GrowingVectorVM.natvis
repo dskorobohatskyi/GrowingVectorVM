@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+    <!-- Define the visualization for GrowingVectorVM -->
+    <Type Name="ds::GrowingVectorVM&lt;*,*,*&gt;">
+        <DisplayString>{{size = {m_size}, capacity = {m_committedPages * m_pageSize / sizeof($T1)} }}</DisplayString>
+        <Expand>
+            <Item Name="[size]">m_size</Item>
+            <Item Name="[page size]">m_pageSize</Item>
+            <Item Name="[capacity]">m_committedPages * m_pageSize / sizeof($T1)</Item>
+            <Item Name="[committed pages]">m_committedPages</Item>
+            <Item Name="[reserved pages]">m_reservedPages</Item>
+          <ArrayItems>
+              <Size>m_size</Size>
+              <ValuePointer>m_data</ValuePointer>
+            </ArrayItems>
+        </Expand>
+    </Type>
+
+</AutoVisualizer>

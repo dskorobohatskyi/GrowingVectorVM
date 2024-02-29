@@ -13,6 +13,7 @@ option(MAKE_EXAMPLES_DEFAULT_PROJECT "Set Examples project as default in Visual 
 add_library(GrowingVectorVM INTERFACE)
 target_include_directories(GrowingVectorVM INTERFACE ${PROJECT_SOURCE_DIR}/include)
 target_sources(GrowingVectorVM INTERFACE ${PROJECT_SOURCE_DIR}/include/GrowingVectorVM.h)
+target_sources(GrowingVectorVM PRIVATE ${PROJECT_SOURCE_DIR}/include/GrowingVectorVM.natvis)
 
 
 if (BUILD_EXAMPLES)
