@@ -16,7 +16,7 @@ if exist %BUILD_DIR% (
 
 echo Generating CMake solution in %BUILD_DIR%
 pushd %BUILD_DIR%
-cmake ..
+cmake -DBUILD_TESTS=ON ..
 
 popd
 popd
