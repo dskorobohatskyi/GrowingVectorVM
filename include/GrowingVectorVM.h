@@ -481,7 +481,6 @@ public:
 
 // Important: be careful, there is no extending mechanism for Reserve in runtime, so having exception in case of overflow is expected.
 // Choose ReservePolicy carefully and generally consider it as strict limitation.
-// TODO natvis for GrowingVector
 template<typename T, typename ReservePolicy = RAMSizePolicyTag, /*bool LargePagesEnabled = false,*/ bool CommitPagesWithReserve = false/* || LargePagesEnabled*/>
 class GrowingVectorVM
 {
