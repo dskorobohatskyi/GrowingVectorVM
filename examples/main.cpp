@@ -7,12 +7,6 @@
 #include <assert.h>
 
 
-
-// TODO GoogleBench
-// cmp header only and static lib/dll (provide switching in cmake)
-// analyze how to grab metrics about compilation time?
-
-
 struct alignas(256) MyHugeStruct
 {
 
@@ -97,12 +91,6 @@ int main()
     const size_t maxAmount = vectorInf.GetCapacity();
     std::cout << "Capacity: " << maxAmount << "\n";
     std::cout << "Reserve: " << vectorInf.GetReserve() << "\n";
-
-    // TODO impl use cases
-    //for (size_t i = 0; i < vectorInf.GetReserve(); i++)
-    {
-        //vectorInf.PushBack(i * 1.23f);
-    }
 
     try
     {
